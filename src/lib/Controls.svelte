@@ -14,18 +14,15 @@
       placeholder="40, 40, 40, 100"
       class="field-input"
     />
-    <span class="field-hint">Comma-separated flex item widths</span>
   </label>
 
   <label class="field">
     <span class="field-label">Container capacity</span>
     <input type="number" bind:value={balanceState.capacity} min="0" class="field-input" />
-    <span class="field-hint">Line width in px</span>
   </label>
 
   <label class="field">
     <span class="field-label">Gap</span>
     <input type="number" bind:value={balanceState.gap} min="0" class="field-input" />
-    <span class="field-hint">Space between items in px</span>
   </label>
 </div>

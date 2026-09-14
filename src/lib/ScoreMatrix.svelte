@@ -66,31 +66,59 @@
   function isRowMinimum(start: number, end: number): boolean {
     return bestEnd[start] === end;
   }
+
+  // Shared item list for both axis strips: same n chips either way, only the
+  // highlighted boundary/split differs. Reused instead of rebuilt per header cell.
+  const items = $derived(Array.from({ length: n }, (_, i) => i));
 </script>
 
-<div class="flex flex-col gap-5">
-  <p class="matrix-intro">
-    Each eligible cell is <code>score[start, end) + minScores[end]</code>: the cost of a
-    line covering items <code>[start, end)</code>, plus the best achievable total for
-    everything after it. Every row has a minimum — marked with a rule — and it always
-    equals <code>minScores[start]</code> in the header row above. Only the minima that
-    chain from row 0 are the DP's actual answer; those get the accent. Cells past the
-    last fitting end are struck out: the line they describe overflows, so the DP never
-    considers them, no matter how low their raw score reads.
-  </p>
+{#snippet colBoundary(end: number)}
+  <!-- Column header: the full item strip repeats in every column, with the chip
+       at end-1 (the item this cut sits right after) picked out in the accent and
+       a tick after it — so the mark sits *between* that chip and the next, never
+       on an item, which is the visual for "end is a cut position, not an item". -->
+  <div class="bstrip">
+    {#each items as i (i)}
+      <span class="bchip" class:bchip--mark={i === end - 1}></span>
+      {#if i === end - 1}
+        <span class="btick"></span>
+      {/if}
+    {/each}
+  </div>
+{/snippet}
 
+{#snippet rowStrip(start: number)}
+  <!-- Row header: one strip per row, all n chips in a single cell, so alignment
+       is exact by construction. Chips before `start` fade, chips from `start` on
+       stay solid, and a tick sits right before the first solid chip — the strip
+       shows "this line begins here" with no text. -->
+  <div class="bstrip">
+    {#each items as i (i)}
+      {#if i === start}
+        <span class="btick"></span>
+      {/if}
+      <span class="bchip" class:bchip--dim={i < start}></span>
+    {/each}
+  </div>
+{/snippet}
+
+
+
+
+
+<div class="flex flex-col gap-4">
   <div class="legend">
     <span class="legend-item">
       <span class="legend-swatch legend-swatch--chosen"></span>
-      chosen path (this row's minimum, and it leads to the next)
+      chosen
     </span>
     <span class="legend-item">
       <span class="legend-mark legend-mark--rowmin"></span>
-      row minimum (always equals minScores[start], not always on the path)
+      row min
     </span>
     <span class="legend-item">
       <span class="legend-swatch legend-swatch--invalid"></span>
-      out of consideration (overflow, or end &le; start)
+      out of range
     </span>
   </div>
 
@@ -98,16 +126,15 @@
     <table class="matrix">
       <thead>
         <tr>
-          <th class="matrix-corner">
-            <span class="matrix-axis-row">Row: line starts at item&hellip;</span>
-            <span class="matrix-axis-col">Column: line ends before item&hellip; <span class="tnum">[start, end)</span></span>
-          </th>
+          <th class="matrix-corner"></th>
           {#each cols as end (end)}
-            <th class="matrix-head tnum">{end}</th>
+            <th class="matrix-head">
+              {@render colBoundary(end)}
+            </th>
           {/each}
         </tr>
         <tr>
-          <th class="matrix-corner matrix-corner--sub">minScores[end]</th>
+          <th class="matrix-corner matrix-corner--sub tnum">minScores</th>
           {#each cols as end (end)}
             <th class="matrix-minscore tnum">{minScores[end] ?? '\u2014'}</th>
           {/each}
@@ -116,9 +143,12 @@
       <tbody>
         {#each rows as start (start)}
           <tr>
-            <th class="matrix-row-head tnum">{start}</th>
+            <th class="matrix-row-head">
+              {@render rowStrip(start)}
+            </th>
             {#each cols as end (end)}
               {@const eligible = isEligible(start, end)}
+              {@const overflowing = end > start && !eligible}
               {@const total = cellTotal(start, end)}
               {@const cellScore = eligible ? score[start]?.[end] : null}
               {@const rowMin = eligible && isRowMinimum(start, end)}
@@ -127,6 +157,7 @@
                 class={[
                   'matrix-cell',
                   !eligible && 'matrix-cell--invalid',
+                  overflowing && 'matrix-cell--overflow',
                   rowMin && 'matrix-cell--rowmin',
                   chosen && 'matrix-cell--chosen',
                 ]}
@@ -135,10 +166,10 @@
                   <div class="matrix-cell-total tnum">{total}</div>
                   <div class="matrix-cell-breakdown tnum">{cellScore} + {minScores[end]}</div>
                   {#if chosen}
-                    <div class="matrix-cell-next tnum">&darr; row {end}</div>
+                    <div class="matrix-cell-next tnum">&darr; {end}</div>
                   {/if}
-                {:else}
-                  &mdash;
+                {:else if overflowing}
+                  <div class="matrix-cell-inf">&infin;</div>
                 {/if}
               </td>
             {/each}
@@ -169,12 +200,6 @@
 </div>
 
 <style>
-  .matrix-intro {
-    font-size: 15px;
-    color: var(--text);
-    max-width: 68ch;
-  }
-
   .legend {
     display: flex;
     flex-wrap: wrap;
@@ -218,7 +243,7 @@
   }
 
   .legend-swatch--invalid {
-    background: var(--code-bg);
+    background: var(--overflow-tint);
     box-shadow: inset 0 0 0 1px var(--border);
   }
 
@@ -245,49 +270,75 @@
     font-weight: 500;
     color: var(--text);
     background: var(--code-bg);
-    padding: 8px 12px;
+    padding: 6px 8px;
   }
 
   .matrix-corner {
     left: 0;
     top: 0;
     z-index: 2;
+    min-width: 96px;
     text-align: left;
-    vertical-align: top;
+    vertical-align: middle;
     border-bottom: 1px solid var(--border);
     border-right: 1px solid var(--border);
-  }
-
-  /* Axis labels, spelled out in words rather than a cryptic "start \ end":
-     the row label reads down the left edge, the column label sits above the
-     grid — quiet (11px, secondary gray) but unmissable, so a reader always
-     knows which axis is which and that end is exclusive. */
-  .matrix-axis-row,
-  .matrix-axis-col {
-    display: block;
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.4;
-    color: var(--text);
-  }
-
-  .matrix-axis-col {
-    margin-top: 2px;
   }
 
   .matrix-corner--sub {
     font-size: 10px;
     opacity: 0.75;
+    padding: 4px 8px;
+  }
+
+  /* The item-strip axis header: chips and a boundary tick sit inline, in item
+     order. The tick renders *between* two chips (or at either end), never on
+     one — the visual argument for why the interval is half-open: a boundary is
+     a position between items, not an item itself. */
+  .bstrip {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px 2px;
+  }
+
+  .bchip {
+    flex: 1 1 0;
+    height: 12px;
+    min-width: 5px;
+    border-radius: 2px;
+    background: var(--text-h);
+    opacity: 0.28;
+  }
+
+  .bchip--dim {
+    opacity: 0.12;
+  }
+
+  /* The marked chip (column header): the item this column's cut sits right
+     after — picked out in the accent so the eye can find the cut in context. */
+  .bchip--mark {
+    background: var(--accent);
+    opacity: 0.8;
+  }
+
+  .btick {
+    flex: 0 0 auto;
+    width: 2px;
+    height: 16px;
+    border-radius: 1px;
+    background: var(--accent);
   }
 
   .matrix-head {
     top: 0;
     z-index: 1;
+    min-width: 30px;
+    height: 24px;
     border-bottom: 1px solid var(--border);
   }
 
   .matrix-minscore {
-    top: 41px;
+    top: 24px;
     z-index: 1;
     font-size: 11px;
     color: var(--text-h);
@@ -297,6 +348,7 @@
   .matrix-row-head {
     left: 0;
     z-index: 1;
+    min-width: 96px;
     border-right: 1px solid var(--border);
   }
 
@@ -318,9 +370,24 @@
     opacity: 0.7;
   }
 
+  /* Structurally impossible (end <= start): no line, nothing to show. Fully quiet —
+     lower opacity than an overflow cell, no glyph, so it reads as absence, not cost. */
   .matrix-cell--invalid {
-    color: var(--text);
-    opacity: 0.35;
+    background: var(--code-bg);
+    opacity: 0.4;
+  }
+
+  /* Overflow: this line exists but its length exceeds capacity, so the DP scores
+     it as infinite cost and never takes it. The infinity glyph is that cost made
+     literal; the restrained red tint marks "excluded", not "error". */
+  .matrix-cell--overflow {
+    background: var(--overflow-tint);
+  }
+
+  .matrix-cell-inf {
+    font-size: 15px;
+    color: var(--overflow);
+    opacity: 0.55;
   }
 
   /* Row minimum: a structural fact true of every row, so it gets a quiet mark,

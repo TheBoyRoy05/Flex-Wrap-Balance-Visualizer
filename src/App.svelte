@@ -8,12 +8,8 @@
   <header class="flex flex-col gap-3">
     <span class="font-mono text-[13px] font-medium text-[var(--accent)]">flex-wrap: balance</span>
     <h1>Score matrix visualizer</h1>
-    <p class="max-w-xl text-[15px] leading-relaxed text-[var(--text)]">
-      <code>flex-wrap: balance</code> chooses line breaks that minimize the total squared
-      free space across lines, instead of greedily packing each line as full as possible.
-      The matrix below shows, for every candidate line <code>[start, end)</code>, the total
-      cost of choosing it — its own squared free space plus the best achievable cost for
-      every item after it — and highlights the set the DP algorithm actually picked.
+    <p class="text-[15px] text-[var(--text)]">
+      Every candidate line, scored — the accent marks what the DP picked.
     </p>
   </header>
 

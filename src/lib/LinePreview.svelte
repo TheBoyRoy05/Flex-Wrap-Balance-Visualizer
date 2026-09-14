@@ -95,22 +95,24 @@
            their tracks are always the same width. Either can drive the shared
            `trackClientWidth` reactively — bind:clientWidth just keeps writing
            the same measured number from whichever track last resized. -->
-      <div class="track" style="width: {trackPx}px" bind:clientWidth={trackClientWidth}>
-        {#each lines as line (line.start)}
-          {@const scale = lineScale(line)}
-          <div class="line-row" class:line-row-overflow={line.overflow} style="gap: {Math.max(0, balanceState.gap * scale)}px">
-            {#each line.items as size, i (`${line.start}-${i}`)}
-              <div class="item" style="width: {itemPx(size, scale)}px">
-                <span class="item-label">{size}</span>
-              </div>
-            {/each}
-            {#if line.free > 0}
-              <div class="free" title="free: {line.free}">
-                <span class="free-label">{line.free}</span>
-              </div>
-            {/if}
-          </div>
-        {/each}
+      <div class="track-pad">
+        <div class="track" style="width: {trackPx}px" bind:clientWidth={trackClientWidth}>
+          {#each lines as line (line.start)}
+            {@const scale = lineScale(line)}
+            <div class="line-row" class:line-row-overflow={line.overflow} style="gap: {Math.max(0, balanceState.gap * scale)}px">
+              {#each line.items as size, i (`${line.start}-${i}`)}
+                <div class="item" style="width: {itemPx(size, scale)}px">
+                  <span class="item-label">{size}</span>
+                </div>
+              {/each}
+              {#if line.free > 0}
+                <div class="free" title="free: {line.free}">
+                  <span class="free-label">{line.free}</span>
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
       </div>
       <p class="panel-total">
         Total squared free space: <span class="panel-total-value">{total}</span>
@@ -140,24 +142,26 @@
   .panel {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    /* No panel border/fill: the two panels are separated by the grid gap and
-       their own title, not a box. Whitespace does the separating. */
-    /* Grid items default to a min-width equal to their content's intrinsic width;
-       without this a fixed-width .track can force the column (and the page) wider
-       than the viewport instead of shrinking. */
+    gap: 0;
     min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
   }
 
   .panel-title {
     font-size: 13px;
     font-weight: 500;
     color: var(--text-h);
+    padding: 10px 14px;
+    background: var(--code-bg);
+    border-bottom: 1px solid var(--border);
   }
 
   .panel-empty {
     font-size: 15px;
     color: var(--text);
+    padding: 14px;
   }
 
   .track {
@@ -165,6 +169,10 @@
     flex-direction: column;
     gap: 10px;
     max-width: 100%;
+  }
+
+  .track-pad {
+    padding: 14px 14px 4px;
   }
 
   .line-row {
@@ -231,7 +239,7 @@
   .panel-total {
     font-size: 13px;
     color: var(--text);
-    padding-top: 2px;
+    padding: 6px 14px 14px;
   }
 
   .panel-total-value {
