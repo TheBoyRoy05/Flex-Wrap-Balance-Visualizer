@@ -66,43 +66,7 @@
   function isRowMinimum(start: number, end: number): boolean {
     return bestEnd[start] === end;
   }
-
-  // Shared item list for both axis strips: same n chips either way, only the
-  // highlighted boundary/split differs. Reused instead of rebuilt per header cell.
-  const items = $derived(Array.from({ length: n }, (_, i) => i));
 </script>
-
-{#snippet colBoundary(end: number)}
-  <!-- Column header: the full item strip repeats in every column, with the chip
-       at end-1 (the item this cut sits right after) picked out in the accent and
-       a tick after it — so the mark sits *between* that chip and the next, never
-       on an item, which is the visual for "end is a cut position, not an item". -->
-  <div class="bstrip">
-    {#each items as i (i)}
-      <span class="bchip" class:bchip--mark={i === end - 1}></span>
-      {#if i === end - 1}
-        <span class="btick"></span>
-      {/if}
-    {/each}
-  </div>
-{/snippet}
-
-{#snippet rowStrip(start: number)}
-  <!-- Row header: one strip per row, all n chips in a single cell, so alignment
-       is exact by construction. Chips before `start` fade, chips from `start` on
-       stay solid, and a tick sits right before the first solid chip — the strip
-       shows "this line begins here" with no text. -->
-  <div class="bstrip">
-    {#each items as i (i)}
-      {#if i === start}
-        <span class="btick"></span>
-      {/if}
-      <span class="bchip" class:bchip--dim={i < start}></span>
-    {/each}
-  </div>
-{/snippet}
-
-
 
 
 
@@ -126,11 +90,13 @@
     <table class="matrix">
       <thead>
         <tr>
-          <th class="matrix-corner"></th>
+          <th class="matrix-corner matrix-corner--split">
+            <span class="corner-notation tnum">[start, end)</span>
+            <span class="corner-label corner-label--start">start</span>
+            <span class="corner-label corner-label--end">end</span>
+          </th>
           {#each cols as end (end)}
-            <th class="matrix-head">
-              {@render colBoundary(end)}
-            </th>
+            <th class="matrix-head tnum">{end}</th>
           {/each}
         </tr>
         <tr>
@@ -143,9 +109,7 @@
       <tbody>
         {#each rows as start (start)}
           <tr>
-            <th class="matrix-row-head">
-              {@render rowStrip(start)}
-            </th>
+            <th class="matrix-row-head tnum">{start}</th>
             {#each cols as end (end)}
               {@const eligible = isEligible(start, end)}
               {@const overflowing = end > start && !eligible}
@@ -284,49 +248,52 @@
     border-right: 1px solid var(--border);
   }
 
+  /* Split-corner convention: one hairline diagonal from corner to corner does
+     the labeling job the two chip strips used to do. "start" sits in the
+     lower-left triangle (reads against the row axis below it), "end" in the
+     upper-right (reads against the column axis beside it). The diagonal is
+     drawn as a 1px gradient seam, same weight and color as the table's other
+     hairlines — structure, not meaning, so it stays monochrome. */
+  .matrix-corner--split {
+    position: relative;
+    height: 40px;
+    background:
+      linear-gradient(to top left, transparent calc(50% - 0.5px), var(--border) 50%, transparent calc(50% + 0.5px)),
+      var(--code-bg);
+  }
+
+  .corner-notation {
+    position: absolute;
+    top: 4px;
+    left: 8px;
+    font-size: 9px;
+    font-weight: 400;
+    color: var(--text);
+    opacity: 0.55;
+  }
+
+  .corner-label {
+    position: absolute;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text);
+    opacity: 0.75;
+  }
+
+  .corner-label--start {
+    bottom: 4px;
+    left: 8px;
+  }
+
+  .corner-label--end {
+    top: 4px;
+    right: 8px;
+  }
+
   .matrix-corner--sub {
     font-size: 10px;
     opacity: 0.75;
     padding: 4px 8px;
-  }
-
-  /* The item-strip axis header: chips and a boundary tick sit inline, in item
-     order. The tick renders *between* two chips (or at either end), never on
-     one — the visual argument for why the interval is half-open: a boundary is
-     a position between items, not an item itself. */
-  .bstrip {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 3px 2px;
-  }
-
-  .bchip {
-    flex: 1 1 0;
-    height: 12px;
-    min-width: 5px;
-    border-radius: 2px;
-    background: var(--text-h);
-    opacity: 0.28;
-  }
-
-  .bchip--dim {
-    opacity: 0.12;
-  }
-
-  /* The marked chip (column header): the item this column's cut sits right
-     after — picked out in the accent so the eye can find the cut in context. */
-  .bchip--mark {
-    background: var(--accent);
-    opacity: 0.8;
-  }
-
-  .btick {
-    flex: 0 0 auto;
-    width: 2px;
-    height: 16px;
-    border-radius: 1px;
-    background: var(--accent);
   }
 
   .matrix-head {
