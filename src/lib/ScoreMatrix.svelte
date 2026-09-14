@@ -14,7 +14,7 @@
   const rows = $derived(Array.from({ length: n }, (_, i) => n - 1 - i)); // start: n-1..0
   const cols = $derived(Array.from({ length: n }, (_, i) => i + 1)); // end: 1..n
 
-  const { score, len, breaks, minScores } = $derived(balanceState.result);
+  const { score, len, breaks, minScores, bestEnd } = $derived(balanceState.result);
 
   // The largest `end` genuinely considered for each `start` — the DP never looks
   // past this, because a line stretching further has already overflowed. A cell
@@ -38,6 +38,9 @@
 
   // The chosen line segments are [prevBreak, break) for each entry in `breaks`.
   // Store them as "start,end" keys in a Set for O(1) cell lookup in the template.
+  // Every one of these is also a row minimum (see isRowMinimum below): the path
+  // is built by following bestEnd from 0, so chosenCells is always a subset of
+  // "the cell each row's minimum lands on" — never a competing, unrelated set.
   const chosenCells: Set<string> = $derived.by(() => {
     const cells = new Set<string>();
     let start = 0;
@@ -56,22 +59,34 @@
   function isChosen(start: number, end: number): boolean {
     return chosenCells.has(`${start},${end}`);
   }
+
+  // bestEnd[start] is, by definition, the end that achieves minScores[start] —
+  // the row's minimum total. True for every row, whether or not that row lies
+  // on the final path. This is the structural fact the legend was missing.
+  function isRowMinimum(start: number, end: number): boolean {
+    return bestEnd[start] === end;
+  }
 </script>
 
 <div class="flex flex-col gap-5">
   <p class="matrix-intro">
     Each eligible cell is <code>score[start, end) + minScores[end]</code>: the cost of a
     line covering items <code>[start, end)</code>, plus the best achievable total for
-    everything after it. A row's minimum is <code>minScores[start]</code> — the
-    highlighted cell is simply that minimum, not a judgment call. Cells past the last
-    fitting end are struck out: the line they describe overflows, so the DP never
+    everything after it. Every row has a minimum — marked with a rule — and it always
+    equals <code>minScores[start]</code> in the header row above. Only the minima that
+    chain from row 0 are the DP's actual answer; those get the accent. Cells past the
+    last fitting end are struck out: the line they describe overflows, so the DP never
     considers them, no matter how low their raw score reads.
   </p>
 
   <div class="legend">
     <span class="legend-item">
       <span class="legend-swatch legend-swatch--chosen"></span>
-      chosen line (row minimum)
+      chosen path (this row's minimum, and it leads to the next)
+    </span>
+    <span class="legend-item">
+      <span class="legend-mark legend-mark--rowmin"></span>
+      row minimum (always equals minScores[start], not always on the path)
     </span>
     <span class="legend-item">
       <span class="legend-swatch legend-swatch--invalid"></span>
@@ -106,17 +121,22 @@
               {@const eligible = isEligible(start, end)}
               {@const total = cellTotal(start, end)}
               {@const cellScore = eligible ? score[start]?.[end] : null}
+              {@const rowMin = eligible && isRowMinimum(start, end)}
               {@const chosen = eligible && isChosen(start, end)}
               <td
                 class={[
                   'matrix-cell',
                   !eligible && 'matrix-cell--invalid',
+                  rowMin && 'matrix-cell--rowmin',
                   chosen && 'matrix-cell--chosen',
                 ]}
               >
                 {#if eligible}
                   <div class="matrix-cell-total tnum">{total}</div>
                   <div class="matrix-cell-breakdown tnum">{cellScore} + {minScores[end]}</div>
+                  {#if chosen}
+                    <div class="matrix-cell-next tnum">&darr; row {end}</div>
+                  {/if}
                 {:else}
                   &mdash;
                 {/if}
@@ -180,6 +200,21 @@
   .legend-swatch--chosen {
     background: var(--accent-tint);
     box-shadow: inset 0 0 0 1.5px var(--accent);
+  }
+
+  /* Row minimum's quiet mark, echoed in the legend: a rule underneath, same
+     weight as the cell itself carries — no fill, no second hue. */
+  .legend-mark {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--code-bg);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+
+  .legend-mark--rowmin {
+    box-shadow: inset 0 -2px 0 0 var(--text-h), inset 0 0 0 1px var(--border);
   }
 
   .legend-swatch--invalid {
@@ -288,8 +323,19 @@
     opacity: 0.35;
   }
 
-  /* The one accent on this page: the row-minimum cells the DP actually chose.
-     Everything else in the grid stays on the neutral gray ramp. */
+  /* Row minimum: a structural fact true of every row, so it gets a quiet mark,
+     not a hue. A single rule under the total (same weight as bold text, not a
+     fill or a border box) says "this is minScores[start] for this row" without
+     competing with the accent reserved for the chosen path below. */
+  .matrix-cell--rowmin .matrix-cell-total {
+    font-weight: 600;
+    box-shadow: inset 0 -2px 0 0 var(--text-h);
+    padding-bottom: 2px;
+  }
+
+  /* The one accent on this page: the row-minimum cells that also lie on the
+     chosen path. Every chosen cell is a row minimum (see isChosen/isRowMinimum
+     above), so this always layers on top of, never instead of, the rule above. */
   .matrix-cell--chosen {
     background: var(--accent-tint);
     color: var(--accent);
@@ -297,7 +343,24 @@
     box-shadow: inset 0 0 0 1.5px var(--accent);
   }
 
+  .matrix-cell--chosen .matrix-cell-total {
+    /* Accent cells drop the rowmin rule in favor of the accent frame itself —
+       the box-shadow above already says "chosen"; a second rule would be a
+       competing mark on the one cell that most needs to read as singular. */
+    box-shadow: none;
+  }
+
   .matrix-cell--chosen .matrix-cell-breakdown {
+    color: var(--accent);
+    opacity: 0.85;
+  }
+
+  /* Chaining mark: names the next row this chosen cell hands off to, so the
+     path reads as a sequence (0 -> 2 -> 4 -> 5) and not four isolated cells. */
+  .matrix-cell-next {
+    margin-top: 2px;
+    font-size: 10px;
+    font-weight: 500;
     color: var(--accent);
     opacity: 0.85;
   }
