@@ -11,8 +11,9 @@
     <p class="max-w-xl text-[15px] leading-relaxed text-[var(--text)]">
       <code>flex-wrap: balance</code> chooses line breaks that minimize the total squared
       free space across lines, instead of greedily packing each line as full as possible.
-      This matrix shows, for every candidate line <code>[start, end)</code>, the squared
-      free space it would leave, and highlights the set the DP algorithm actually picked.
+      The matrix below shows, for every candidate line <code>[start, end)</code>, the total
+      cost of choosing it — its own squared free space plus the best achievable cost for
+      every item after it — and highlights the set the DP algorithm actually picked.
     </p>
   </header>
 

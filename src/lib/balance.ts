@@ -67,6 +67,25 @@ export function computeMatrix(sizes: number[], capacity: number, gap: number): M
   return { score, len };
 }
 
+/** lastFittingEnd[start] = largest end whose line [start, end) still fits capacity,
+ *  or start+1 when the item at start overflows on its own (a single item is always
+ *  allowed on a line). Ends beyond this bound are not real candidates: their score
+ *  is 0 by definition (overflow), not because they're competitive. Exposed standalone
+ *  (mirrors the internal bound `balancedLineBreaks` computes) so callers such as the
+ *  score matrix display can tell a genuinely-considered end from an overflowing one. */
+export function lastFittingEnd(sizes: number[], capacity: number, gap: number): number[] {
+  const n = sizes.length;
+  const { length } = buildMatrix(sizes, capacity, gap);
+  const result = new Array<number>(n).fill(0);
+  let end = 1;
+  for (let start = 0; start < n; start++) {
+    end = Math.max(end, start + 1);
+    while (end < n && length(start, end + 1) <= capacity) end++;
+    result[start] = end;
+  }
+  return result;
+}
+
 /** Full balance: score matrix + the minimizing set of line breaks via a suffix DP.
  *  Tie-break gives the most items to the earliest line (spec's front-to-back tie-break),
  *  achieved by accepting the last end that ties the minimum. */

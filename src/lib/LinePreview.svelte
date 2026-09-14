@@ -58,12 +58,13 @@
   // Starts at trackPx before the element has mounted/measured.
   let trackClientWidth = $state(trackPx);
 
-  // `.line-row` reserves 4px padding + 1px border on each side (see CSS below)
-  // for its own chrome; that space is not available to the item/free children
-  // laid out inside it. Item widths must be computed against the row's inner
-  // content width, not the outer track width, or the last item in a full row
-  // overruns the row by exactly that padding+border amount.
-  const rowInset = 10; // 2 * (4px padding + 1px border)
+  // `.line-row` reserves 4px padding on each side (see CSS below) for its own
+  // chrome; that space is not available to the item/free children laid out
+  // inside it. Item widths must be computed against the row's inner content
+  // width, not the outer track width, or the last item in a full row overruns
+  // the row by exactly that padding amount. The row's hairline divider sits on
+  // the bottom edge only, so it consumes no horizontal space.
+  const rowInset = 8; // 2 * 4px padding
 
   const pxPerUnit = $derived(
     balanceState.capacity > 0 ? (trackClientWidth - rowInset) / balanceState.capacity : 0,
@@ -140,10 +141,8 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 16px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: var(--code-bg);
+    /* No panel border/fill: the two panels are separated by the grid gap and
+       their own title, not a box. Whitespace does the separating. */
     /* Grid items default to a min-width equal to their content's intrinsic width;
        without this a fixed-width .track can force the column (and the page) wider
        than the viewport instead of shrinking. */
@@ -164,7 +163,7 @@
   .track {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     max-width: 100%;
   }
 
@@ -172,18 +171,22 @@
     display: flex;
     align-items: center;
     height: 36px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0 4px;
+    /* A single hairline stands in for the row frame that used to be a bordered
+       box; it still separates one line from the next without nesting a panel
+       inside a panel. */
+    border-bottom: 1px solid var(--border);
+    padding: 0 4px 8px;
     max-width: 100%;
   }
 
   .line-row-overflow {
-    border-color: var(--overflow);
-    background: var(--overflow-tint);
+    border-bottom-color: var(--overflow);
   }
 
+  /* Item chips keep a minimal fill (no border) so proportional widths still read
+     as distinct blocks — removing this would lose the "line is made of items"
+     shape that the geometry exists to show. Monochrome: items don't carry meaning,
+     so they don't get the accent. */
   .item {
     display: flex;
     align-items: center;
@@ -191,17 +194,15 @@
     height: 28px;
     flex: 0 0 auto;
     border-radius: 4px;
-    background: var(--accent-tint);
-    box-shadow: inset 0 0 0 1.5px var(--accent);
+    background: var(--code-bg);
     overflow: hidden;
   }
 
   .item-label {
-    font-family: var(--mono);
-    font-size: 11px;
+    font-size: 12px;
     font-variant-numeric: tabular-nums;
-    color: var(--accent);
-    font-weight: 600;
+    color: var(--text-h);
+    font-weight: 500;
     white-space: nowrap;
     padding: 0 4px;
   }
@@ -213,15 +214,12 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    border-radius: 4px;
-    border: 1.5px dashed var(--border);
     padding: 0 6px;
     overflow: hidden;
   }
 
   .free-label {
-    font-family: var(--mono);
-    font-size: 10px;
+    font-size: 11px;
     font-variant-numeric: tabular-nums;
     color: var(--text);
     opacity: 0.75;
@@ -233,12 +231,10 @@
   .panel-total {
     font-size: 13px;
     color: var(--text);
-    border-top: 1px solid var(--border);
-    padding-top: 10px;
+    padding-top: 2px;
   }
 
   .panel-total-value {
-    font-family: var(--mono);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     color: var(--text-h);

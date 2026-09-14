@@ -87,6 +87,12 @@ code {
   background: var(--code-bg);
 }
 
+/* Figures set in the system font, not monospace — tabular-nums buys column
+   alignment for numbers without the terminal/code texture monospace reads as. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Shared form-field styling for Controls.svelte — quiet label above a filled field. */
 .field {
   display: flex;
@@ -108,8 +114,7 @@ code {
   background: var(--code-bg);
   color: var(--text-h);
   font: inherit;
-  font-family: var(--mono);
-  font-size: 14px;
+  font-size: 15px;
   font-variant-numeric: tabular-nums;
   outline: none;
   transition: border-color 200ms ease-out, box-shadow 200ms ease-out;
