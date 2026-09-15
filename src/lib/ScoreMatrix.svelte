@@ -12,6 +12,10 @@
   // bottom — so reading down the page follows the order values are actually
   // computed, and row 0 (whose minimum is the final answer) lands last.
   const rows = $derived(Array.from({ length: n }, (_, i) => n - 1 - i)); // start: n-1..0
+
+  // Columns are the true item indices 1..n — every end from 1 to n is a genuine
+  // column, never renumbered, so a cell always matches the item axis it's drawn
+  // against.
   const cols = $derived(Array.from({ length: n }, (_, i) => i + 1)); // end: 1..n
 
   const { score, len, breaks, bestEnd } = $derived(balanceState.result);
@@ -204,8 +208,8 @@
       <span class="legend-mark legend-mark--overflow">&infin;</span>
       overflows
     </span>
-    <span class="legend-item legend-item--key" aria-label="cell total equals free squared plus min score at end">
-      total = <span class="legend-key-term">free&sup2;</span> + <span class="legend-key-term">Min Score[end]</span>
+    <span class="legend-item legend-item--key" aria-label="cell total equals free squared plus minScore at end">
+      total = <span class="legend-key-term">free&sup2;</span> + <span class="legend-key-term"><code>minScore</code>[end]</span>
     </span>
   </div>
 
@@ -223,10 +227,10 @@
           {#each cols as end (end)}
             <th class="matrix-head tnum">{end}</th>
           {/each}
-          <th class="matrix-head matrix-head--settled">Min Score</th>
+          <th class="matrix-head matrix-head--settled"><code>minScore</code></th>
         </tr>
         <tr>
-          <th class="matrix-corner matrix-corner--sub tnum">Min Score</th>
+          <th class="matrix-corner matrix-corner--sub tnum"><code>minScore</code></th>
           {#each cols as end (end)}
             {@const memoJustSettled = justSettledMemo(end)}
             {@const memoReading = isReadingMemo(end)}
@@ -265,17 +269,18 @@
                 ]}
               >
                 {#if shown && cell}
-                  <div class="matrix-cell-total tnum">
-                    {cell.total}
-                    {#if overflow}
-                      <span class="matrix-cell-inf-inline" title="overflow: length exceeds capacity">&infin;</span>
-                    {/if}
-                  </div>
-                  <div class="matrix-cell-breakdown tnum">
-                    <span>{cell.lineScore}</span>
-                    +
-                    <span>{fmtLive(cell.memoValue)}</span>
-                  </div>
+                  {#if overflow}
+                    <div class="matrix-cell-inf-solo" title="overflow: length exceeds capacity">&infin;</div>
+                  {:else}
+                    <div class="matrix-cell-total tnum">
+                      {cell.total}
+                    </div>
+                    <div class="matrix-cell-breakdown tnum">
+                      <span>{cell.lineScore}</span>
+                      +
+                      <span>{fmtLive(cell.memoValue)}</span>
+                    </div>
+                  {/if}
                 {:else if !voidCell}
                   <div class="matrix-cell-placeholder">
                     <span class="matrix-cell-placeholder-line"></span>
@@ -687,7 +692,7 @@
   /* Overflow: this line exists but its length exceeds capacity, so the DP scores
      it as infinite cost (when it's not eligible) or a waived 0 (when it is, as
      with a lone over-capacity item) — either way, never taken as competitive.
-     The red tint and inline infinity glyph (.matrix-cell-inf-inline, in the
+     The red tint and standalone infinity glyph (.matrix-cell-inf-solo, in the
      revealed-cell markup above) make that cost literal, and only appear once
      this exact candidate has been evaluated — an out-of-range candidate's
      overflow is a fact the algorithm discovers at that step, never shown
@@ -761,14 +766,20 @@
     opacity: 0.7;
   }
 
-  /* Inline glyph on an eligible-but-overflowing cell (single item over capacity):
-     the total is genuinely 0 by the algorithm, but this mark says that 0 was
-     waived, not earned — so it can never be mistaken for a perfect zero-free-space
-     fit. Full opacity: same disqualification meaning as any other overflow mark
-     on this page, and only ever rendered once this candidate has been revealed. */
-  .matrix-cell-inf-inline {
-    margin-left: var(--space-4);
-    font-size: var(--text-13);
+  /* Overflowing candidate: the infinity glyph stands alone, with no total number
+     and no lineScore+memoValue breakdown next to it — a 0 total next to the mark
+     would read as "its real score", inviting the reader to think it should have
+     won, when the line is actually disqualified. Centered in the same reserved
+     two-line box every other revealed cell fills, so geometry never shifts.
+     Full opacity: same disqualification meaning as every other overflow mark on
+     this page, and only ever rendered once this candidate has been revealed
+     (shown && cell, same as the eligible branch) — never ahead of its step. */
+  .matrix-cell-inf-solo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: calc(var(--text-13) * var(--lh-body) * 2);
+    font-size: var(--text-15);
     color: var(--color-overflow);
   }
 
