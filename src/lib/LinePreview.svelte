@@ -4,6 +4,7 @@
   // there's no local $state, because every value is a pure function of the shared
   // inputs and recomputing on change is exactly what $derived is for.
   import { balanceState } from './state.svelte';
+  import { isOverflowingLine, type MatrixResult } from './balance';
 
   interface Line {
     start: number;
@@ -13,30 +14,43 @@
     length: number;
     /** Free space left on the line; 0 when the line overflows capacity. */
     free: number;
-    /** Squared free space — what flex-wrap: balance actually minimizes. */
+    /** Squared free space — what flex-wrap: balance actually minimizes. Read from
+     *  the shared score matrix (balanceState.result), never recomputed here, so this
+     *  panel and ScoreMatrix.svelte can never disagree about the same line's cost. */
     score: number;
     /** True when the line's laid-out length exceeds capacity — rendering must contain this, not spill it. */
     overflow: boolean;
   }
 
-  /** Turn a break-index list (one-past-last-item of each line) into renderable lines. */
-  function buildLines(sizes: number[], breaks: number[], capacity: number, gap: number): Line[] {
+  // The score matrix is a pure function of (sizes, capacity, gap) — it holds a
+  // score/len entry for every [start, end) pair, independent of which breaks any
+  // particular strategy chose. That means the one matrix balanceState.result
+  // already computes for the DP also covers greedy's breaks: both strategies are
+  // just different subsets of the same [start, end) index space, so both read from
+  // this one source instead of each keeping its own free/score arithmetic.
+  const matrix: MatrixResult = $derived(balanceState.result);
+
+  /** Turn a break-index list (one-past-last-item of each line) into renderable lines,
+   *  looking up length/score in the shared matrix rather than recomputing them. */
+  function buildLines(sizes: number[], breaks: number[], m: MatrixResult, capacity: number): Line[] {
     let start = 0;
     return breaks.map((end) => {
       const items = sizes.slice(start, end);
-      const length = items.reduce((sum, size) => sum + size, 0) + gap * Math.max(0, items.length - 1);
-      const free = length < capacity ? capacity - length : 0;
-      const line: Line = { start, end, items, length, free, score: free * free, overflow: length > capacity };
+      const length = m.len[start]?.[end] ?? 0;
+      const score = m.score[start]?.[end] ?? 0;
+      const overflow = isOverflowingLine(m.len, start, end, capacity);
+      const free = overflow ? 0 : capacity - length;
+      const line: Line = { start, end, items, length, free, score, overflow };
       start = end;
       return line;
     });
   }
 
   const greedyLines = $derived(
-    buildLines(balanceState.sizes, balanceState.greedyBreaks, balanceState.capacity, balanceState.gap),
+    buildLines(balanceState.sizes, balanceState.greedyBreaks, matrix, balanceState.capacity),
   );
   const balancedLines = $derived(
-    buildLines(balanceState.sizes, balanceState.result.breaks, balanceState.capacity, balanceState.gap),
+    buildLines(balanceState.sizes, balanceState.result.breaks, matrix, balanceState.capacity),
   );
 
   const greedyTotal = $derived(greedyLines.reduce((sum, line) => sum + line.score, 0));
@@ -50,7 +64,7 @@
   // width (`trackClientWidth`, measured via `bind:clientWidth` below), not this
   // constant — otherwise an item sized as a fraction of 360 can be wider than
   // a track that's actually only, say, 336px, and it escapes the box.
-  const trackPx = 360;
+  const trackPx = 720;
 
   // `bind:clientWidth` is a readonly dimension binding: Svelte measures the
   // element with a ResizeObserver and keeps this $state in sync whenever the
@@ -109,6 +123,10 @@
                 <div class="free" title="free: {line.free}">
                   <span class="free-label">{line.free}</span>
                 </div>
+              {:else if line.overflow}
+                <div class="overflow-badge" title="overflow: length exceeds capacity — this line's 0 is waived, not earned">
+                  <span class="overflow-badge-label">&infin; over</span>
+                </div>
               {/if}
             </div>
           {/each}
@@ -116,6 +134,9 @@
       </div>
       <p class="panel-total">
         Total squared free space: <span class="panel-total-value">{total}</span>
+        {#if lines.some((line) => line.overflow)}
+          <span class="panel-total-overflow-note">— includes an overflowing line; its 0 is waived, not earned</span>
+        {/if}
       </p>
     {/if}
   </div>
@@ -130,7 +151,7 @@
   .preview {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 24px;
+    gap: var(--space-24);
   }
 
   @media (max-width: 640px) {
@@ -144,51 +165,51 @@
     flex-direction: column;
     gap: 0;
     min-width: 0;
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-10);
     overflow: hidden;
   }
 
   .panel-title {
-    font-size: 13px;
+    font-size: var(--text-13);
     font-weight: 500;
-    color: var(--text-h);
-    padding: 10px 14px;
-    background: var(--code-bg);
-    border-bottom: 1px solid var(--border);
+    color: var(--color-text);
+    padding: var(--space-8) var(--space-16);
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-hairline);
   }
 
   .panel-empty {
-    font-size: 15px;
-    color: var(--text);
-    padding: 14px;
+    font-size: var(--text-15);
+    color: var(--color-text-secondary);
+    padding: var(--space-16);
   }
 
   .track {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-8);
     max-width: 100%;
   }
 
   .track-pad {
-    padding: 14px 14px 4px;
+    padding: var(--space-16) var(--space-16) var(--space-4);
   }
 
   .line-row {
     display: flex;
     align-items: center;
-    height: 36px;
+    height: var(--space-32);
     /* A single hairline stands in for the row frame that used to be a bordered
        box; it still separates one line from the next without nesting a panel
        inside a panel. */
-    border-bottom: 1px solid var(--border);
-    padding: 0 4px 8px;
+    border-bottom: 1px solid var(--color-hairline);
+    padding: 0 var(--space-4) var(--space-8);
     max-width: 100%;
   }
 
   .line-row-overflow {
-    border-bottom-color: var(--overflow);
+    border-bottom-color: var(--color-overflow);
   }
 
   /* Item chips keep a minimal fill (no border) so proportional widths still read
@@ -199,52 +220,79 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 28px;
+    height: var(--space-24);
     flex: 0 0 auto;
-    border-radius: 4px;
-    background: var(--code-bg);
+    border-radius: var(--radius-6);
+    background: var(--color-surface);
     overflow: hidden;
   }
 
   .item-label {
-    font-size: 12px;
+    font-size: var(--text-13);
     font-variant-numeric: tabular-nums;
-    color: var(--text-h);
+    color: var(--color-text);
     font-weight: 500;
     white-space: nowrap;
-    padding: 0 4px;
+    padding: 0 var(--space-4);
   }
 
   .free {
     flex: 1 1 auto;
     min-width: 0;
-    height: 28px;
+    height: var(--space-24);
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    padding: 0 6px;
+    padding: 0 var(--space-8);
     overflow: hidden;
   }
 
   .free-label {
-    font-size: 11px;
+    font-size: var(--text-13);
     font-variant-numeric: tabular-nums;
-    color: var(--text);
+    color: var(--color-text-secondary);
     opacity: 0.75;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
+  /* Overflow badge fills the same slot the free-space chip would occupy, so an
+     overflowing line (free is 0 by definition) still carries an explicit mark
+     instead of rendering as a bare row that could pass for a clean, zero-free fit. */
+  .overflow-badge {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: var(--space-24);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 var(--space-8);
+    overflow: hidden;
+  }
+
+  .overflow-badge-label {
+    font-size: var(--text-13);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-overflow);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .panel-total {
-    font-size: 13px;
-    color: var(--text);
-    padding: 6px 14px 14px;
+    font-size: var(--text-13);
+    color: var(--color-text-secondary);
+    padding: var(--space-8) var(--space-16) var(--space-16);
   }
 
   .panel-total-value {
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-    color: var(--text-h);
+    color: var(--color-text);
+  }
+
+  .panel-total-overflow-note {
+    color: var(--color-overflow);
   }
 </style>

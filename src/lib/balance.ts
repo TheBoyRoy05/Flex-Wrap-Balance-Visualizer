@@ -67,6 +67,15 @@ export function computeMatrix(sizes: number[], capacity: number, gap: number): M
   return { score, len };
 }
 
+/** True when the laid-out length of items [start, end) exceeds capacity. A line in
+ *  this state scores 0 by definition (cost waived, not earned) — indistinguishable
+ *  from a genuine zero-free-space fit unless a caller checks this predicate too.
+ *  Presentational escape hatch: does not change score/len/breaks numerics anywhere. */
+export function isOverflowingLine(len: MatrixResult['len'], start: number, end: number, capacity: number): boolean {
+  const l = len[start]?.[end];
+  return l != null && l > capacity;
+}
+
 /** lastFittingEnd[start] = largest end whose line [start, end) still fits capacity,
  *  or start+1 when the item at start overflows on its own (a single item is always
  *  allowed on a line). Ends beyond this bound are not real candidates: their score

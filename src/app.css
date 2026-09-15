@@ -1,57 +1,78 @@
 @import "tailwindcss";
 
 /*
- * Design tokens — near-monochrome palette, one accent (Apple system blue).
- * --text-h  = primary text (near-black / near-white)
- * --text    = secondary text (lower contrast, used for body copy + quiet labels)
- * --code-bg = neutral fill for inputs, code, and table chrome
+ * Design tokens — closed set. See docs/design-tokens.md for the contract:
+ * every value used anywhere else in this codebase must be one of these.
  */
 :root {
-  --text: #6e6e73;
-  --text-h: #1d1d1f;
-  --bg: #fff;
-  --border: #d2d2d7;
-  --code-bg: #f5f5f7;
+  /* Type sizes (px) */
+  --text-13: 13px;
+  --text-15: 15px;
+  --text-17: 17px;
+  --text-21: 21px;
+  --text-28: 28px;
+  --text-40: 40px;
 
-  --accent: #0071e3;
-  --accent-tint: rgba(0, 113, 227, 0.08);
-  --accent-focus-ring: rgba(0, 113, 227, 0.4);
+  /* Line heights */
+  --lh-tight: 1.05; /* 28, 40 */
+  --lh-body: 1.45; /* 13, 15, 17 */
 
-  --overflow: #d70015;
-  --overflow-tint: rgba(215, 0, 21, 0.06);
+  /* Letter spacing */
+  --ls-40: -0.03em;
+  --ls-28: -0.02em;
+  --ls-21: -0.02em;
+  --ls-none: 0em; /* below 21 */
 
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+  /* Spacing (px) */
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-48: 48px;
+  --space-64: 64px;
+
+  /* Radii (px) */
+  --radius-6: 6px;
+  --radius-8: 8px;
+  --radius-10: 10px;
+
+  /* Control height (px) — Apple HIG calls for 36-44px tap targets on inputs;
+     the spacing scale's nearest step (32px) undershoots that, so this is a
+     dedicated token rather than a spacing value reused for a different purpose. */
+  --control-height: 36px;
+
+  /* Colors */
+  --color-bg: #ffffff;
+  --color-surface: #fafafa;
+  --color-text: #1d1d1f;
+  --color-text-secondary: #6e6e73;
+  --color-hairline: #d2d2d7;
+  --color-accent: #0071e3;
+  --color-accent-tint: rgba(0, 113, 227, 0.08);
+  --color-overflow: #d70015;
+
+  /* Widths */
+  --measure-prose: 720px;
+  --measure-data: 1120px;
+  --gutter: 24px;
+  --gutter-narrow: 16px;
 
   --sans: -apple-system, system-ui, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  font: 17px/1.5 var(--sans);
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+  --accent-focus-ring: rgba(0, 113, 227, 0.4);
+
+  font: var(--text-17)/var(--lh-body) var(--sans);
+  color-scheme: light;
+  color: var(--color-text-secondary);
+  background: var(--color-bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #86868b;
-    --text-h: #f5f5f7;
-    --bg: #000;
-    --border: #3a3a3c;
-    --code-bg: #1c1c1e;
-
-    --accent: #0a84ff;
-    --accent-tint: rgba(10, 132, 255, 0.12);
-    --accent-focus-ring: rgba(10, 132, 255, 0.4);
-
-    --overflow: #ff453a;
-    --overflow-tint: rgba(255, 69, 58, 0.1);
-
-    --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  }
 }
 
 * {
@@ -65,10 +86,10 @@ body {
 h1 {
   font-family: var(--sans);
   font-weight: 600;
-  font-size: 2.75rem;
-  line-height: 1.05;
-  letter-spacing: -0.025em;
-  color: var(--text-h);
+  font-size: var(--text-40);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-40);
+  color: var(--color-text);
   margin: 0;
 }
 
@@ -78,13 +99,13 @@ p {
 
 code {
   font-family: var(--mono);
-  font-size: 0.85em;
+  font-size: var(--text-13);
   font-variant-numeric: tabular-nums;
   display: inline-flex;
-  border-radius: 4px;
-  padding: 2px 6px;
-  color: var(--text-h);
-  background: var(--code-bg);
+  border-radius: var(--radius-6);
+  padding: var(--space-4) var(--space-8);
+  color: var(--color-text);
+  background: var(--color-surface);
 }
 
 /* Figures set in the system font, not monospace — tabular-nums buys column
@@ -93,45 +114,68 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
+/* Width tiers: prose measure for title/subhead/input row, data measure for
+   preview panels + matrix. Both collapse to full width minus gutter below 768px. */
+.measure-prose {
+  width: 100%;
+  max-width: var(--measure-prose);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.measure-data {
+  width: 100%;
+  max-width: var(--measure-data);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+@media (max-width: 768px) {
+  .measure-prose,
+  .measure-data {
+    padding-inline: var(--gutter-narrow);
+  }
+}
+
 /* Shared form-field styling for Controls.svelte — quiet label above a filled field. */
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .field-label {
-  font-size: 13px;
+  font-size: var(--text-13);
   font-weight: 500;
-  color: var(--text);
+  color: var(--color-text-secondary);
 }
 
 .field-input {
-  height: 40px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--code-bg);
-  color: var(--text-h);
+  height: var(--control-height);
+  padding: 0 var(--space-12);
+  border-radius: var(--radius-8);
+  border: 1px solid var(--color-hairline);
+  background: var(--color-surface);
+  color: var(--color-text);
   font: inherit;
-  font-size: 15px;
+  font-size: var(--text-15);
   font-variant-numeric: tabular-nums;
   outline: none;
   transition: border-color 200ms ease-out, box-shadow 200ms ease-out;
 }
 
 .field-input::placeholder {
-  color: var(--text);
+  color: var(--color-text-secondary);
   opacity: 0.6;
 }
 
 .field-input:focus-visible {
-  border-color: var(--accent);
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--accent-focus-ring);
 }
 
 .field-hint {
-  font-size: 12px;
-  color: var(--text);
+  font-size: var(--text-13);
+  color: var(--color-text-secondary);
   opacity: 0.8;
 }
