@@ -10,7 +10,7 @@ The goal of balancing items is to homogenize the free space. To achieve this, we
 
 $$\min \sum_{line} \texttt{freeSpace}[\texttt{line.start}, \texttt{line.end})^2$$
 
-Where $\texttt{start}$ and $\texttt{end}$ are both indices and 
+Where $\texttt{start}$ and $\texttt{end}$ are both indices with $\texttt{start}$ being inclusive and $\texttt{end}$ being exclusive
 
 $$\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \max\left(0,\ \texttt{capacity} - \left((\texttt{end} - 1 - \texttt{start}) * \texttt{gap} + \sum_{i=\texttt{start}}^{\texttt{end}-1} \texttt{itemSize}[i]\right)\right)$$
 
@@ -48,6 +48,6 @@ With this, we have found the best line breaks which minimzes the sum of the squa
 
 - When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediately and mark the rest of the row as impossible since all item sizes are non-negative so we'll stay above capacity for any larger rows.
 
-  With this, we can further decrease our time complexity to $O(n * L)$ where $L$ is the average line length. In the typical case, $ L << n$ and hence, we can typically achieve near $O(n)$, down from the $O(2^n)$ of brute force. Incredible!
+  With this, we can further decrease our time complexity to $O(n * L)$ where $L$ is the average line length. In the typical case, $L << n$ and hence, we can typically achieve near $O(n)$, down from the $O(2^n)$ of brute force. Incredible!
 
 See the [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance) for more details.
