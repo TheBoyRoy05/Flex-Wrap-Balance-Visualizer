@@ -14,7 +14,7 @@
   const rows = $derived(Array.from({ length: n }, (_, i) => n - 1 - i)); // start: n-1..0
   const cols = $derived(Array.from({ length: n }, (_, i) => i + 1)); // end: 1..n
 
-  const { score, len, breaks, minScores, bestEnd } = $derived(balanceState.result);
+  const { score, len, breaks, bestEnd } = $derived(balanceState.result);
 
   // The largest `end` genuinely considered for each `start` — the DP never looks
   // past this, because a line stretching further has already overflowed. A cell
@@ -26,6 +26,14 @@
     return end > start && end <= fittingEnd[start];
   }
 
+  // Structurally impossible: a line cannot end before or at the point it starts.
+  // True independent of the algorithm's progress or of capacity — this is a fact
+  // about (start, end) as coordinates, never about what's been computed yet, so
+  // it must read as permanently inapplicable rather than "not yet filled".
+  function isVoid(start: number, end: number): boolean {
+    return end <= start;
+  }
+
   // Overflow is a fact about length vs capacity, independent of eligibility.
   // `lastFittingEnd` always permits at least one item per line (a single item is
   // never rejected outright), so a single-item line that alone exceeds capacity is
@@ -34,16 +42,6 @@
   // matrix, not a recomputation) catches that case too.
   function isOverflow(start: number, end: number): boolean {
     return end > start && isOverflowingLine(len, start, end, balanceState.capacity);
-  }
-
-  // The DP's actual recurrence: cheapest way to finish line [start, end) plus the
-  // best achievable score for everything after it. Only defined for eligible cells.
-  function cellTotal(start: number, end: number): number | null {
-    if (!isEligible(start, end)) return null;
-    const s = score[start]?.[end];
-    const rest = minScores[end];
-    if (s == null || rest == null) return null;
-    return s + rest;
   }
 
   // The chosen line segments are [prevBreak, break) for each entry in `breaks`.
@@ -77,13 +75,106 @@
     return bestEnd[start] === end;
   }
 
-  // The row a reader is looking at is the same number the header row shows further
-  // right, in the column of the same index — minScores does both jobs (produced by
-  // its own row, consumed by earlier rows as `minScores[end]`), but until now only
-  // the consumed half had a column. This is the produced half: one trailing cell
-  // per row, equal to that row's own minimum.
-  function settledTotal(start: number): number | null {
-    return minScores[start] ?? null;
+  // --- Cell-by-cell fill animation state ---------------------------------
+  // Everything below is derived from `balanceState.cellEvents` sliced at the
+  // current step — never mutated by hand, never written to from an $effect.
+  // The revealed set and the live memo are both pure functions of "which prefix
+  // of the event list has fired", exactly the shape $derived is for: recompute
+  // the whole picture from the events-so-far, never patch it incrementally.
+  const events = $derived(balanceState.cellEvents);
+  const cellStep = $derived(balanceState.clampedCellStep);
+
+  interface RevealedCell {
+    lineScore: number;
+    memoIndex: number;
+    memoValue: number;
+    total: number;
+  }
+
+  // revealedCells[start][end] once the evaluate event for that candidate has fired,
+  // otherwise absent — this *is* "the matrix starts empty and fills one cell at a
+  // time": before any events have fired the map is empty, so every cell renders blank.
+  const revealedCells: Map<string, RevealedCell> = $derived.by(() => {
+    const map = new Map<string, RevealedCell>();
+    for (let i = 0; i <= cellStep; i++) {
+      const ev = events[i];
+      if (ev?.kind === 'evaluate') {
+        map.set(`${ev.start},${ev.end}`, {
+          lineScore: ev.lineScore,
+          memoIndex: ev.memoIndex,
+          memoValue: ev.memoValue,
+          total: ev.total,
+        });
+      }
+    }
+    return map;
+  });
+
+  // Live memo, rebuilt from the settle events seen so far. `null` means "not
+  // computed yet" — genuinely unknown, not a sentinel value — for every index
+  // except n (the base case: best total for everything after the last item is
+  // 0, the one fact that makes the first row computable at all, so it's known
+  // before any event fires). Each settle event flips exactly one more entry
+  // from null to its real number; nothing is ever shown as Infinity here,
+  // because the viewer has no way to tell "shown Infinity" from "not yet run"
+  // apart — the whole point is that blank *is* the "not yet run" signal.
+  const liveMemo: (number | null)[] = $derived.by(() => {
+    const memo = new Array<number | null>(n + 1).fill(null);
+    memo[n] = 0;
+    for (let i = 0; i <= cellStep; i++) {
+      const ev = events[i];
+      if (ev?.kind === 'settle') memo[ev.start] = ev.settledValue;
+    }
+    return memo;
+  });
+
+  // Live "settles at" column: null (blank) until that row's own settle event
+  // fires — same reasoning as liveMemo above, and in fact the same numbers:
+  // this column read row-wise and the memo row read column-wise are one array.
+  const liveSettled: (number | null)[] = $derived.by(() => {
+    const settled = new Array<number | null>(n).fill(null);
+    for (let i = 0; i <= cellStep; i++) {
+      const ev = events[i];
+      if (ev?.kind === 'settle') settled[ev.start] = ev.settledValue;
+    }
+    return settled;
+  });
+
+  // The single event this step reveals, so a just-settled row/memo entry can get
+  // a moment of distinct emphasis (the settle instant the task calls out as the
+  // point: the same number landing in both the settles-at column and the memo row).
+  const currentEvent = $derived(cellStep >= 0 ? events[cellStep] : undefined);
+
+  function isRevealed(start: number, end: number): boolean {
+    return revealedCells.has(`${start},${end}`);
+  }
+
+  function revealed(start: number, end: number): RevealedCell | undefined {
+    return revealedCells.get(`${start},${end}`);
+  }
+
+  function isReadingMemo(index: number): boolean {
+    return currentEvent?.kind === 'evaluate' && currentEvent.memoIndex === index;
+  }
+
+  // True only for the exact candidate cell the current step is evaluating right
+  // now — distinct from `isReadingMemo`, which marks the memo entry being read,
+  // not the cell doing the reading. Both light up together on an evaluate step:
+  // the dependency (memo entry) and the dependent (this cell) are visibly linked.
+  function isCurrentCandidate(start: number, end: number): boolean {
+    return currentEvent?.kind === 'evaluate' && currentEvent.start === start && currentEvent.end === end;
+  }
+
+  function justSettledMemo(index: number): boolean {
+    return currentEvent?.kind === 'settle' && currentEvent.start === index;
+  }
+
+  // Formats a value already known to be a real, settled number — liveMemo/liveSettled
+  // entries are only ever passed here after their own null-check in the template, and
+  // cell.memoValue is always a settled minScores entry by construction (see
+  // CellEvaluateEvent above). No null/Infinity branch: neither can reach this function.
+  function fmtLive(v: number): string {
+    return String(v);
   }
 
   // Which row the stepper is currently deciding, so the matrix can highlight it —
@@ -106,15 +197,15 @@
       row min
     </span>
     <span class="legend-item">
-      <span class="legend-swatch legend-swatch--invalid"></span>
+      <span class="legend-swatch legend-swatch--void"></span>
       out of range
     </span>
     <span class="legend-item">
       <span class="legend-mark legend-mark--overflow">&infin;</span>
-      overflow (0 is waived, not earned)
+      overflows
     </span>
-    <span class="legend-item legend-item--key" aria-label="cell total equals line score plus rest score">
-      total = <span class="legend-key-term">line&sup2;</span> + <span class="legend-key-term">rest</span>
+    <span class="legend-item legend-item--key" aria-label="cell total equals free squared plus min score at end">
+      total = <span class="legend-key-term">free&sup2;</span> + <span class="legend-key-term">Min Score[end]</span>
     </span>
   </div>
 
@@ -132,12 +223,21 @@
           {#each cols as end (end)}
             <th class="matrix-head tnum">{end}</th>
           {/each}
-          <th class="matrix-head matrix-head--settled">settles at</th>
+          <th class="matrix-head matrix-head--settled">Min Score</th>
         </tr>
         <tr>
-          <th class="matrix-corner matrix-corner--sub tnum">best from here</th>
+          <th class="matrix-corner matrix-corner--sub tnum">Min Score</th>
           {#each cols as end (end)}
-            <th class="matrix-minscore tnum">{minScores[end] ?? '\u2014'}</th>
+            {@const memoJustSettled = justSettledMemo(end)}
+            {@const memoReading = isReadingMemo(end)}
+            {@const memoVal = liveMemo[end]}
+            <th
+              class={['matrix-minscore', 'tnum', memoJustSettled && 'matrix-minscore--justsettled', memoReading && 'matrix-minscore--reading']}
+            >
+              {#if memoVal != null}
+                {fmtLive(memoVal)}
+              {/if}
+            </th>
           {/each}
           <th class="matrix-minscore matrix-minscore--settled"></th>
         </tr>
@@ -149,42 +249,61 @@
             {#each cols as end (end)}
               {@const eligible = isEligible(start, end)}
               {@const overflow = isOverflow(start, end)}
-              {@const total = cellTotal(start, end)}
-              {@const cellScore = eligible ? score[start]?.[end] : null}
-              {@const rowMin = eligible && isRowMinimum(start, end)}
-              {@const chosen = eligible && isChosen(start, end)}
+              {@const voidCell = isVoid(start, end)}
+              {@const cell = revealed(start, end)}
+              {@const shown = isRevealed(start, end)}
+              {@const rowMin = shown && eligible && isRowMinimum(start, end)}
+              {@const chosen = shown && eligible && isChosen(start, end)}
+              {@const current = isCurrentCandidate(start, end)}
               <td
                 class={[
                   'matrix-cell',
-                  !eligible && 'matrix-cell--invalid',
-                  overflow && 'matrix-cell--overflow',
+                  shown && overflow && 'matrix-cell--overflow',
                   rowMin && 'matrix-cell--rowmin',
                   chosen && 'matrix-cell--chosen',
+                  current && 'matrix-cell--current',
                 ]}
               >
-                {#if eligible}
+                {#if shown && cell}
                   <div class="matrix-cell-total tnum">
-                    {total}
+                    {cell.total}
                     {#if overflow}
                       <span class="matrix-cell-inf-inline" title="overflow: length exceeds capacity">&infin;</span>
                     {/if}
                   </div>
                   <div class="matrix-cell-breakdown tnum">
-                    <span>{cellScore}</span>
+                    <span>{cell.lineScore}</span>
                     +
-                    <span>{minScores[end]}</span>
+                    <span>{fmtLive(cell.memoValue)}</span>
                   </div>
-                {:else if overflow}
-                  <div class="matrix-cell-inf">&infin;</div>
+                {:else if !voidCell}
+                  <div class="matrix-cell-placeholder">
+                    <span class="matrix-cell-placeholder-line"></span>
+                    <span class="matrix-cell-placeholder-line"></span>
+                  </div>
+                {:else}
+                  <div class="matrix-cell-void" aria-hidden="true">
+                    <svg class="void-diagonal" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                      <line x1="0" y1="0" x2="100" y2="100" />
+                      <line x1="100" y1="0" x2="0" y2="100" />
+                    </svg>
+                  </div>
                 {/if}
               </td>
             {/each}
-            <td class="matrix-cell matrix-cell--settled tnum">{settledTotal(start) ?? '\u2014'}</td>
+            <td
+              class={['matrix-cell', 'matrix-cell--settled', 'tnum', justSettledMemo(start) && 'matrix-cell--justsettled']}
+            >
+              {#if liveSettled[start] != null}
+                {fmtLive(liveSettled[start])}
+              {/if}
+            </td>
           </tr>
         {/each}
       </tbody>
     </table>
   </div>
+
 
   {@render children?.()}
 
@@ -208,7 +327,7 @@
       <p class="summary-note">
         Total score (sum of squared free space): <span class="summary-total tnum">{totalScore}</span>
         {#if breaks.some((end, i) => isOverflowingLine(len, i === 0 ? 0 : breaks[i - 1], end, balanceState.capacity))}
-          <span class="summary-total-overflow-note">— includes an overflowing line; its 0 is waived, not earned</span>
+          <span class="summary-total-overflow-note">— includes a line that overflows</span>
         {/if}
       </p>
     {/if}
@@ -258,9 +377,12 @@
     box-shadow: inset 0 0 0 1px var(--color-text-secondary);
   }
 
-  .legend-swatch--invalid {
-    background: var(--color-overflow);
-    opacity: 0.08;
+  /* Structurally void (end <= start): quiet neutral fill, no accent, no red — this
+     is a fact about the coordinate grid itself, never about cost or overflow, so it
+     must never borrow the overflow swatch's red tint. */
+  .legend-swatch--void {
+    background: var(--color-hairline);
+    opacity: 0.4;
     box-shadow: inset 0 0 0 1px var(--color-hairline);
   }
 
@@ -310,6 +432,13 @@
     border-collapse: collapse;
     text-align: center;
     font-size: var(--text-13);
+    /* Fixed layout: column widths come only from the explicit `width` values
+       below, never grown by content. `min-width` alone doesn't do this — the
+       browser's auto layout still widens a column past its min-width once a
+       cell's content demands more room, which is exactly the jitter a
+       cell-by-cell fill animation must not have (a column sized for "4" at
+       reset must stay that width once it holds "6400 + 900"). */
+    table-layout: fixed;
   }
 
   .matrix-corner,
@@ -327,7 +456,9 @@
     left: 0;
     top: 0;
     z-index: 2;
-    min-width: 96px;
+    /* 96px, composed from tokens (64 + 32) — wide enough for "best from here"
+       in the sub-header row without introducing an off-scale literal. */
+    width: calc(var(--space-64) + var(--space-32));
     text-align: left;
     vertical-align: middle;
     border-bottom: 1px solid var(--color-hairline);
@@ -388,7 +519,11 @@
   .matrix-head {
     top: 0;
     z-index: 1;
-    min-width: var(--space-32);
+    /* Fixed column width (96px, composed from tokens 64+32) reserved for the
+       widest content a data column will ever hold once fully revealed — a
+       "line² + rest" breakdown line such as "6400 + 7300" — so `table-layout:
+       fixed` never has to grow a column mid-run. */
+    width: calc(var(--space-64) + var(--space-32));
     height: var(--space-24);
     border-bottom: 1px solid var(--color-hairline);
   }
@@ -412,7 +547,7 @@
   .matrix-row-head {
     left: 0;
     z-index: 1;
-    min-width: 96px;
+    width: calc(var(--space-64) + var(--space-32));
     border-right: 1px solid var(--color-hairline);
   }
 
@@ -436,6 +571,63 @@
     padding: var(--space-8) var(--space-12);
     color: var(--color-text);
     border-top: 1px solid var(--color-hairline);
+    /* Reserved space for the two-line total+breakdown content (see
+       .matrix-cell-total / .matrix-cell-breakdown below), so a cell claims the
+       same box whether it's still blank or has just been revealed — filling in
+       one cell at a time must not resize or reflow the table around it. The
+       cell's own top/bottom padding (space-8 each) is added on top of the two
+       content lines: `height` on a table cell is a floor the browser will
+       still grow past if the padded content needs more room than the box
+       declares, so the box has to declare the padded total up front, not just
+       the inner content height.
+
+       This alone isn't sufficient: table-layout: fixed fixes column *width*,
+       not row *height*, and a td's height is a floor the row can still grow
+       past. The real culprit was two separately-laid-out lines
+       (.matrix-cell-total, .matrix-cell-breakdown) each rounding their own
+       line-box to a whole device pixel; summed, two independent roundings can
+       land above the one continuously-computed `calc()` value below by a
+       device pixel or more, and a row grows to fit its tallest cell. Fixing
+       each line's own `height` (not just line-height) to an exact half-share
+       of this cell's reserved content height forces the browser through the
+       identical box math whether that line is empty or holds text — the
+       placeholder below reserves two such lines too, so nothing here can ever
+       measure taller than what the empty state already claims. */
+    height: calc(var(--text-13) * var(--lh-body) * 2 + var(--space-8) * 2);
+    transition: background-color 200ms ease-out, box-shadow 200ms ease-out;
+  }
+
+  /* Blank reserved space for a not-yet-revealed cell — two invisible lines of
+     the exact height .matrix-cell-total/.matrix-cell-breakdown occupy once
+     filled, so the empty state goes through the same two-line box math as the
+     filled one instead of collapsing to a single shorter box that a filled
+     sibling cell in the same row would then grow past. Content is absent
+     (nothing rendered inside), only the geometry is shared. */
+  .matrix-cell-placeholder {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+  }
+
+  .matrix-cell-placeholder-line {
+    height: calc(var(--text-13) * var(--lh-body));
+  }
+
+  /* Structurally void cell (end <= start): same reserved box as any other body
+     cell, so it never perturbs row height either — see .matrix-cell-void below
+     for its visual treatment. */
+  .matrix-cell-void {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* The step currently being evaluated: a quiet outline, not a fill, so it
+     reads as "in progress" rather than competing with the settled rowmin/chosen
+     rings. Kept subtle per the no-bounce/no-glow constraint — a static ring,
+     no animation. */
+  .matrix-cell--current {
+    box-shadow: inset 0 0 0 1px var(--color-accent);
   }
 
   /* Produced value: the same number the header row shows in the column of the
@@ -448,34 +640,77 @@
   }
 
   .matrix-cell-total {
+    height: calc(var(--text-13) * var(--lh-body));
     line-height: var(--lh-body);
     font-size: var(--text-13);
+    white-space: nowrap;
   }
 
   .matrix-cell-breakdown {
+    height: calc(var(--text-13) * var(--lh-body));
     font-size: var(--text-13);
     line-height: var(--lh-body);
     color: var(--color-text-secondary);
     opacity: 0.7;
+    white-space: nowrap;
   }
 
-  /* Structurally impossible (end <= start): no line, nothing to show. Fully quiet —
-     lower opacity than an overflow cell, no glyph, so it reads as absence, not cost. */
-  .matrix-cell--invalid {
-    background: var(--color-surface);
-    opacity: 0.4;
+  /* Structurally void cell (end <= start): same reserved box as any other body
+     cell, so it never perturbs row height either. Two hairline diagonals cross
+     corner to corner — the conventional not-applicable table treatment — drawn
+     the same way as the corner header's single diagonal: an inline SVG line per
+     stroke, `preserveAspectRatio="none"` so it always lands on the cell's real
+     corners regardless of size, `vector-effect: non-scaling-stroke` so the 1px
+     weight matches every other hairline rule on the table rather than scaling
+     with the cell's box. No fill, no accent, no red: this is a fact about the
+     coordinate grid itself, distinct from a blank not-yet-computed cell (which
+     has no lines at all) and from overflow (which is red). */
+  .matrix-cell-void {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+
+  .void-diagonal {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .void-diagonal line {
+    stroke: var(--color-hairline);
+    stroke-width: 1px;
+    vector-effect: non-scaling-stroke;
   }
 
   /* Overflow: this line exists but its length exceeds capacity, so the DP scores
      it as infinite cost (when it's not eligible) or a waived 0 (when it is, as
      with a lone over-capacity item) — either way, never taken as competitive.
-     The red tint and infinity glyph make that cost literal; full styling below,
-     after --chosen, so it wins the cascade on cells that are both. Full opacity:
-     this glyph says "disqualified", meaning that must never read as faded. */
+     The red tint and inline infinity glyph (.matrix-cell-inf-inline, in the
+     revealed-cell markup above) make that cost literal, and only appear once
+     this exact candidate has been evaluated — an out-of-range candidate's
+     overflow is a fact the algorithm discovers at that step, never shown
+     ahead of it. Full styling below, after --chosen, so it wins the cascade
+     on cells that are both. */
 
-  .matrix-cell-inf {
-    font-size: var(--text-15);
-    color: var(--color-overflow);
+  /* The instant a row settles: its own minScore and the memo entry at that same
+     index become the same visible number at the same moment. A brief accent
+     tint on both cells (no motion, no glow) is the only cue tying them together
+     — subtle per the "no bounce/no glow" transition constraint. */
+  .matrix-minscore--justsettled,
+  .matrix-cell--justsettled {
+    background: var(--color-accent-tint);
+    color: var(--color-accent);
+    font-weight: 600;
+  }
+
+  /* The memo entry the current evaluate step is reading from — a quiet ring,
+     matching .matrix-cell--current's treatment of the cell doing the reading,
+     so the dependency between the two reads as one visual relationship. */
+  .matrix-minscore--reading {
+    box-shadow: inset 0 0 0 1px var(--color-accent);
+    color: var(--color-accent);
   }
 
   /* Row minimum: a structural fact true of every row, so every row's minimum
@@ -529,7 +764,8 @@
   /* Inline glyph on an eligible-but-overflowing cell (single item over capacity):
      the total is genuinely 0 by the algorithm, but this mark says that 0 was
      waived, not earned — so it can never be mistaken for a perfect zero-free-space
-     fit. Full opacity: this is the same disqualification meaning as .matrix-cell-inf. */
+     fit. Full opacity: same disqualification meaning as any other overflow mark
+     on this page, and only ever rendered once this candidate has been revealed. */
   .matrix-cell-inf-inline {
     margin-left: var(--space-4);
     font-size: var(--text-13);

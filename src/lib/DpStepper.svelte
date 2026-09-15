@@ -1,16 +1,20 @@
 <script lang="ts">
-  // Walks the suffix DP one row at a time. The DP computes `start` from n-1 down to 0
-  // (it needs `minScores[end]` for every `end > start` before it can decide `start`), so
-  // step 0 here is the *last* item's row and the final step is start = 0 — the algorithm's
-  // real direction, not a front-to-back story imposed on it afterward.
+  // Walks the flat cell-event list one candidate evaluation at a time. The DP computes
+  // `start` from n-1 down to 0 (it needs `minScores[end]` for every `end > start` before
+  // it can decide `start`), and within a row it visits candidate ends in ascending order —
+  // `balanceState.cellEvents` already carries that real order, so stepping through it in
+  // sequence is stepping through the algorithm's own execution, not a story imposed after.
   import { balanceState } from './state.svelte';
+  import type { CellEvaluateEvent } from './balance';
   import { prefersReducedMotion } from 'svelte/motion';
 
-  const steps = $derived(balanceState.trace.steps);
-  const stepIndex = $derived(balanceState.clampedStepIndex);
-  const step = $derived(steps[stepIndex]);
-  const atStart = $derived(stepIndex === 0);
-  const atEnd = $derived(stepIndex >= steps.length - 1);
+  const events = $derived(balanceState.cellEvents);
+  const stepIndex = $derived(balanceState.clampedCellStep);
+  // The event this step reveals. undefined before the first step (index -1, the
+  // empty-matrix state) or once the list is empty (no items).
+  const event = $derived(stepIndex >= 0 ? events[stepIndex] : undefined);
+  const atStart = $derived(stepIndex <= -1 || events.length === 0);
+  const atEnd = $derived(stepIndex >= events.length - 1);
 
   // Real UI state: whether autoplay is currently running. Nothing about "is the timer
   // ticking right now" can be computed from `sizes`/`capacity`/`stepIndex`, so this is
@@ -19,23 +23,40 @@
   let playing = $state(false);
 
   function stepForward() {
-    if (balanceState.stepIndex < steps.length - 1) balanceState.stepIndex += 1;
+    if (balanceState.stepIndex < events.length - 1) balanceState.stepIndex += 1;
     else playing = false;
   }
 
   function stepBack() {
-    if (balanceState.stepIndex > 0) balanceState.stepIndex -= 1;
+    if (balanceState.stepIndex > -1) balanceState.stepIndex -= 1;
   }
 
   function reset() {
     playing = false;
-    balanceState.stepIndex = 0;
+    balanceState.stepIndex = -1;
+  }
+
+  function jumpToEnd() {
+    playing = false;
+    balanceState.stepIndex = events.length - 1;
   }
 
   function togglePlay() {
-    if (atEnd) balanceState.stepIndex = 0;
+    if (atEnd) balanceState.stepIndex = -1;
     playing = !playing;
   }
+
+  // Changing sizes/capacity/gap produces a new `events` list with an unrelated shape —
+  // clamping alone (see `clampedCellStep`) could still land mid-run of the new list and
+  // show a partially-filled matrix that never actually happened. This effect is a real
+  // side effect (it reaches out and resets state in response to *other* state changing,
+  // there's no expression that "equals" that reset), so it's `$effect`, not `$derived` —
+  // matching the same rule the autoplay timer below follows.
+  $effect(() => {
+    events;
+    playing = false;
+    balanceState.stepIndex = -1;
+  });
 
   // The play-timer interval is a genuine side effect — it reaches outside reactive state
   // to schedule work over time — so `$effect` is the right rune here, unlike the derived
@@ -47,7 +68,7 @@
   // effect-cleanup contract — the one part of this component that isn't a plain formula.
   $effect(() => {
     if (!playing) return;
-    const delay = prefersReducedMotion.current ? 1600 : 900;
+    const delay = prefersReducedMotion.current ? 900 : 450;
     const id = setInterval(stepForward, delay);
     return () => clearInterval(id);
   });
@@ -60,6 +81,9 @@
   function fmt(n: number): string {
     return n === Number.POSITIVE_INFINITY ? '\u221e' : String(n);
   }
+
+  const evalEvent = $derived(event?.kind === 'evaluate' ? (event as CellEvaluateEvent) : undefined);
+  const settleEvent = $derived(event?.kind === 'settle' ? event : undefined);
 </script>
 
 <div class="stepper">
@@ -76,40 +100,40 @@
     <button type="button" class="stepper-btn" onclick={stepForward} disabled={atEnd}>
       &rarr;
     </button>
-    <span class="stepper-progress tnum">{stepIndex + 1} / {steps.length}</span>
+    <button type="button" class="stepper-btn" onclick={jumpToEnd} disabled={atEnd}>
+      Fill all
+    </button>
+    <span class="stepper-progress tnum">{stepIndex + 1} / {events.length}</span>
   </div>
 
-  {#if step}
-    <div class="stepper-body">
+  <div class="stepper-body">
+    {#if evalEvent}
       <p class="stepper-headline tnum">
-        row <strong>{step.start}</strong>
-        {#if step.candidates.length === 1}
-          &middot; only candidate
-        {:else}
-          &middot; {step.candidates.length} candidates
+        row <strong>{evalEvent.start}</strong> &middot; candidate end <strong>{evalEvent.end}</strong>
+      </p>
+      <div class="stepper-eval tnum">
+        <span class="stepper-eval-range">[{evalEvent.start}, {evalEvent.end})</span>
+        <span class="stepper-eval-items">{itemsLabel(evalEvent.start, evalEvent.end)}</span>
+        <span class="stepper-eval-math">
+          reads memo[<strong>{evalEvent.memoIndex}</strong>] = {fmt(evalEvent.memoValue)}
+          &middot; {fmt(evalEvent.lineScore)} + {fmt(evalEvent.memoValue)} = <strong>{fmt(evalEvent.total)}</strong>
+        </span>
+        {#if evalEvent.isChosen}
+          <span class="stepper-eval-tag">wins so far</span>
         {/if}
+      </div>
+    {:else if settleEvent}
+      <p class="stepper-headline tnum">
+        row <strong>{settleEvent.start}</strong> settles
       </p>
-
-      <ol class="stepper-candidates">
-        {#each step.candidates as c (c.end)}
-          <li class="stepper-candidate tnum" class:stepper-candidate--chosen={c.isChosen}>
-            <span class="stepper-candidate-range">[{step.start}, {c.end})</span>
-            <span class="stepper-candidate-items">{itemsLabel(step.start, c.end)}</span>
-            <span class="stepper-candidate-math">
-              {fmt(c.lineScore)} + {fmt(c.restScore)} = <strong>{fmt(c.total)}</strong>
-            </span>
-            {#if c.isChosen}
-              <span class="stepper-candidate-tag">wins</span>
-            {/if}
-          </li>
-        {/each}
-      </ol>
-
-      <p class="stepper-conclusion tnum">
-        settles at <strong>{step.chosenTotal}</strong> &middot; feeds row {step.start - 1 >= 0 ? '< ' + step.start : '(final)'}
+      <p class="stepper-settle tnum">
+        memo[<strong>{settleEvent.start}</strong>] &larr; <strong>{fmt(settleEvent.settledValue)}</strong>
+        &middot; now readable by rows &lt; {settleEvent.start}
       </p>
-    </div>
-  {/if}
+    {:else}
+      <p class="stepper-headline tnum">matrix empty &middot; memo[n] = 0</p>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -176,6 +200,9 @@
     gap: var(--space-8);
     border-top: 1px solid var(--color-hairline);
     padding-top: var(--space-12);
+    /* Reserve height across all three states (empty / evaluate / settle) so the
+       stepper panel itself doesn't resize as it steps. */
+    min-height: 64px;
   }
 
   .stepper-headline {
@@ -183,65 +210,44 @@
     color: var(--color-text);
   }
 
-  .stepper-candidates {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-
-  .stepper-candidate {
+  .stepper-eval {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-8);
     padding: var(--space-4) var(--space-8);
     border-radius: var(--radius-6);
-    border: 1px solid var(--color-hairline);
-    background: var(--color-bg);
-    font-size: var(--text-13);
-    color: var(--color-text-secondary);
-  }
-
-  .stepper-candidate--chosen {
-    box-shadow: inset 0 0 0 1.5px var(--color-accent);
+    border: 1px solid var(--color-accent);
     background: var(--color-accent-tint);
+    font-size: var(--text-13);
     color: var(--color-accent);
   }
 
-  .stepper-candidate-range {
+  .stepper-eval-range {
     font-weight: 600;
-    color: var(--color-text);
   }
 
-  .stepper-candidate--chosen .stepper-candidate-range {
-    color: var(--color-accent);
-  }
-
-  .stepper-candidate-items {
+  .stepper-eval-items {
     opacity: 0.75;
   }
 
-  .stepper-candidate-math {
+  .stepper-eval-math {
     margin-left: auto;
   }
 
-  .stepper-candidate-tag {
+  .stepper-eval-tag {
     font-size: var(--text-13);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: var(--ls-none);
-    color: var(--color-accent);
   }
 
-  .stepper-conclusion {
+  .stepper-settle {
     font-size: var(--text-13);
     color: var(--color-text-secondary);
   }
 
-  .stepper-conclusion strong {
+  .stepper-settle strong {
     color: var(--color-text);
   }
 </style>

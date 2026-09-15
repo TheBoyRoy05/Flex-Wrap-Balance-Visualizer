@@ -5,9 +5,11 @@
   import DpStepper from './lib/DpStepper.svelte';
   import { balanceState } from './lib/state.svelte';
 
-  // The row the stepper is currently deciding, read out of the trace so the matrix
-  // can highlight it. Undefined once the trace is empty (no items).
-  const activeStart = $derived(balanceState.trace.steps[balanceState.clampedStepIndex]?.start);
+  // The row the stepper is currently deciding, read out of the current cell event so
+  // the matrix can highlight it. Undefined once the event list is empty (no items) or
+  // the animation is at the empty/reset state (index -1, nothing evaluated yet).
+  const currentCellEvent = $derived(balanceState.cellEvents[balanceState.clampedCellStep]);
+  const activeStart = $derived(currentCellEvent?.start);
 </script>
 
 <main class="page">
@@ -17,6 +19,21 @@
     <p class="subhead">
       Every candidate line, scored — the accent marks what the DP picked.
     </p>
+    <div class="objective" role="img" aria-label="minimizes the sum over lines of the squared free space of each line">
+      <span class="objective-label">minimizes</span>
+      <math class="objective-formula">
+        <mrow>
+          <munder>
+            <mo>&sum;</mo>
+            <mtext>line</mtext>
+          </munder>
+          <msup>
+            <mtext>free</mtext>
+            <mn>2</mn>
+          </msup>
+        </mrow>
+      </math>
+    </div>
   </header>
 
   <div class="measure">
@@ -68,6 +85,27 @@
        container shares the page's one content edge (.measure), but a long
        sentence at 1120px would run past a comfortable reading width. */
     max-width: var(--measure-text);
+  }
+
+  /* The objective, rendered once as a formula rather than a fourth sentence —
+     MathML, not a LaTeX/KaTeX dependency, so a two-line stack of native <math>
+     elements does the sum-of-squares typesetting the browser already knows
+     how to lay out. The "minimizes" label is the only prose here, capped at
+     one word so this reads as a formula with a caption, not new prose. */
+  .objective {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-8);
+  }
+
+  .objective-label {
+    font-size: var(--text-13);
+    color: var(--color-text-secondary);
+  }
+
+  .objective-formula {
+    font-size: var(--text-17);
+    color: var(--color-text);
   }
 
   .footer {

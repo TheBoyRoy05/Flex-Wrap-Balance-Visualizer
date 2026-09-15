@@ -241,6 +241,97 @@ export function traceBalancedLineBreaks(sizes: number[], capacity: number, gap: 
   return { breaks, minScores, bestEnd, score, len, steps };
 }
 
+/** One candidate line scored against an already-settled memo entry, in DP visit order. */
+export interface CellEvaluateEvent {
+  kind: 'evaluate';
+  start: number;
+  end: number;
+  /** score[start][end]: this candidate line's own squared free space. */
+  lineScore: number;
+  /** The memo index this candidate reads from — always `end`, always already settled
+   *  by the time this event fires (suffix DP: end > start, and every row from n-1
+   *  down to end has already produced its settle event). */
+  memoIndex: number;
+  /** minScores[memoIndex] at the moment it's read — never Infinity, for the reason above. */
+  memoValue: number;
+  /** lineScore + memoValue. */
+  total: number;
+  /** True only for the candidate this row ultimately keeps as bestEnd[start]. */
+  isChosen: boolean;
+}
+
+/** Fired once a row has compared every candidate: settles minScores[start] and,
+ *  simultaneously, the memo entry at `start` becomes available to rows evaluated
+ *  after this point (start-1, start-2, ...). */
+export interface CellSettleEvent {
+  kind: 'settle';
+  start: number;
+  settledValue: number;
+}
+
+export type CellEvent = CellEvaluateEvent | CellSettleEvent;
+
+/** Flat, cell-granular replay of the suffix DP: one `evaluate` event per candidate
+ *  line considered, one `settle` event per row once its candidates are exhausted,
+ *  in the exact order the algorithm produces them (start = n-1 down to 0, candidate
+ *  ends in ascending order within each row). Built for step-by-step animation, where
+ *  the unit of progress is a single candidate evaluation, not a whole row.
+ *
+ *  Kept separate from traceBalancedLineBreaks and balancedLineBreaks so neither
+ *  function's behavior or signature is touched by this addition. */
+export function traceCellEvents(sizes: number[], capacity: number, gap: number): CellEvent[] {
+  const n = sizes.length;
+  if (!n) return [];
+
+  const { score, length } = buildMatrix(sizes, capacity, gap);
+
+  // Everything fits on one line: same single-row shortcut as the other trace fns.
+  if (length(0, n) <= capacity) {
+    const total = score[0][n] as number;
+    return [
+      { kind: 'evaluate', start: 0, end: n, lineScore: total, memoIndex: n, memoValue: 0, total, isChosen: true },
+      { kind: 'settle', start: 0, settledValue: total },
+    ];
+  }
+
+  const lastFittingEnd = new Array<number>(n).fill(0);
+  let end = 1;
+  for (let start = 0; start < n; start++) {
+    end = Math.max(end, start + 1);
+    while (end < n && length(start, end + 1) <= capacity) end++;
+    lastFittingEnd[start] = end;
+  }
+
+  const INF = Number.POSITIVE_INFINITY;
+  const minScores = new Array<number>(n + 1).fill(INF);
+  minScores[n] = 0;
+  const bestEnd = new Array<number>(n).fill(0);
+  const events: CellEvent[] = [];
+
+  for (let start = n - 1; start >= 0; start--) {
+    for (let e = start + 1; e <= lastFittingEnd[start]; e++) {
+      const lineScore = score[start][e] as number;
+      const memoValue = minScores[e];
+      const total = lineScore + memoValue;
+      if (total <= minScores[start]) {
+        minScores[start] = total;
+        bestEnd[start] = e;
+      }
+      // isChosen is filled in below, once bestEnd[start] is final: an earlier
+      // candidate in this row may tie the eventual minimum without being the
+      // one the <= tie-break actually kept.
+      events.push({ kind: 'evaluate', start, end: e, lineScore, memoIndex: e, memoValue, total, isChosen: false });
+    }
+    for (let i = events.length - 1; i >= 0 && (events[i] as CellEvaluateEvent).start === start; i--) {
+      const ev = events[i] as CellEvaluateEvent;
+      ev.isChosen = ev.end === bestEnd[start];
+    }
+    events.push({ kind: 'settle', start, settledValue: minScores[start] });
+  }
+
+  return events;
+}
+
 /** Parse "40, 40, 100" into [40, 40, 100], dropping blanks and non-numbers. */
 export function parseSizes(input: string): number[] {
   return input
