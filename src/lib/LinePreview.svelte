@@ -113,15 +113,26 @@
         <div class="track" style="width: {trackPx}px" bind:clientWidth={trackClientWidth}>
           {#each lines as line (line.start)}
             {@const scale = lineScale(line)}
-            <div class="line-row" class:line-row-overflow={line.overflow} style="gap: {Math.max(0, balanceState.gap * scale)}px">
-              {#each line.items as size, i (`${line.start}-${i}`)}
-                <div class="item" style="width: {itemPx(size, scale)}px">
-                  <span class="item-label">{size}</span>
-                </div>
-              {/each}
+            <div class="line-row" class:line-row-overflow={line.overflow}>
+              <!-- `.items` owns the flex gap so it only ever lands BETWEEN item
+                   chips, matching the model where gaps sit between items and
+                   never after the last one. `.free`/`.overflow-badge` are
+                   `.line-row`'s siblings, outside this gapped group, so no gap
+                   is stolen from the free region. `.items` adds no padding or
+                   border, so it doesn't change what `rowInset` accounts for. -->
+              <div class="items" style="gap: {Math.max(0, balanceState.gap * scale)}px">
+                {#each line.items as size, i (`${line.start}-${i}`)}
+                  <div class="item" style="width: {itemPx(size, scale)}px">
+                    <span class="item-label">{size}</span>
+                  </div>
+                {/each}
+              </div>
               {#if line.free > 0}
                 <div class="free" title="free: {line.free}">
-                  <span class="free-label">{line.free}</span>
+                  <span class="free-label">
+                    {#if line.free > 20}free: {/if}
+                    {line.free}
+                  </span>
                 </div>
               {:else if line.overflow}
                 <div class="overflow-badge" title="overflow: length exceeds capacity — this line's 0 is waived, not earned">
@@ -135,7 +146,7 @@
       <p class="panel-total">
         Total squared free space: <span class="panel-total-value">{total}</span>
         {#if lines.some((line) => line.overflow)}
-          <span class="panel-total-overflow-note">— includes an overflowing line; its 0 is waived, not earned</span>
+          <span class="panel-total-overflow-note">— includes an overflowing line</span>
         {/if}
       </p>
     {/if}
@@ -200,6 +211,12 @@
     display: flex;
     align-items: center;
     height: var(--space-32);
+    /* No gap here — the row's own children are `.items` (which owns the item
+       gap internally) and `.free`/`.overflow-badge`. If this row had a gap,
+       flex would insert it between `.items` and `.free` too, stealing one
+       gap's width from the free region even though no gap exists there in
+       the model (gaps sit between items, never after the last one). */
+    gap: 0;
     /* A single hairline stands in for the row frame that used to be a bordered
        box; it still separates one line from the next without nesting a panel
        inside a panel. */
@@ -210,6 +227,18 @@
 
   .line-row-overflow {
     border-bottom-color: var(--color-overflow);
+  }
+
+  /* Owns the item gap so it only ever lands between item chips. No padding, no
+     border, no `box-sizing` change — this wrapper must be invisible to the
+     geometry invariant (`rowInset` still only accounts for `.line-row`'s own
+     padding). `flex: 0 0 auto` mirrors the chips' own sizing: this group never
+     grows or shrinks, so it can't take width from `.free`. */
+  .items {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-width: 0;
   }
 
   /* Item chips: accent border in both panels, per this task. `border-box` sizing
@@ -229,16 +258,18 @@
     height: var(--space-24);
     flex: 0 0 auto;
     border-radius: var(--radius-6);
-    background: var(--color-surface);
-    border: 1px solid var(--color-accent);
     box-sizing: border-box;
     overflow: hidden;
+
+    background: var(--color-accent-tint);
+    color: var(--color-accent);
+    font-weight: 600;
+    box-shadow: inset 0 0 0 1.5px var(--color-accent);
   }
 
   .item-label {
     font-size: var(--text-13);
     font-variant-numeric: tabular-nums;
-    color: var(--color-text);
     font-weight: 500;
     white-space: nowrap;
     padding: 0 var(--space-4);
@@ -252,17 +283,31 @@
     align-items: center;
     justify-content: flex-end;
     padding: 0 var(--space-8);
-    overflow: hidden;
+    /* Positioning context for `.free-label`: the label is pinned to this
+       box's right edge (see below) rather than laid out in normal flow, so
+       it can never push `.free` — or the row — wider than the free space
+       it's labeling. */
+    position: relative;
+    overflow: visible;
   }
 
   .free-label {
+    /* Pinned to `.free`'s right edge — which is the row's own right edge,
+       since `.free` is the last child — instead of flowing inside `.free`'s
+       padded box. A label wider than the free region it names (tiny free
+       space, long number) now grows LEFTWARD across the blank gap area
+       instead of clipping, ellipsizing, or escaping past the row's right
+       edge. `.free`'s own width is untouched, so this can't steal width
+       from the proportional item chips. */
+    position: absolute;
+    right: var(--space-8);
+    top: 50%;
+    transform: translateY(-50%);
     font-size: var(--text-13);
     font-variant-numeric: tabular-nums;
-    color: var(--color-text-secondary);
+    color: var(--color-text);
     opacity: 0.75;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   /* Overflow badge fills the same slot the free-space chip would occupy, so an
