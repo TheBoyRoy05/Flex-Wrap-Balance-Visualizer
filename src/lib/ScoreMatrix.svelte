@@ -88,8 +88,9 @@
 
   // Which row the stepper is currently deciding, so the matrix can highlight it —
   // the two views read as connected, not two unrelated panels. Undefined while no
-  // trace exists (n === 0).
-  let { activeStart = undefined }: { activeStart?: number } = $props();
+  // trace exists (n === 0). The stepper itself is rendered here (via children), not
+  // in App.svelte, so it sits with the table it drives instead of far below it.
+  let { activeStart = undefined, children }: { activeStart?: number; children?: import('svelte').Snippet } = $props();
 </script>
 
 
@@ -111,6 +112,9 @@
     <span class="legend-item">
       <span class="legend-mark legend-mark--overflow">&infin;</span>
       overflow (0 is waived, not earned)
+    </span>
+    <span class="legend-item legend-item--key" aria-label="cell total equals line score plus rest score">
+      total = <span class="legend-key-term">line&sup2;</span> + <span class="legend-key-term">rest</span>
     </span>
   </div>
 
@@ -166,9 +170,9 @@
                     {/if}
                   </div>
                   <div class="matrix-cell-breakdown tnum">
-                    <span title="this line's own squared free space">{cellScore}</span>
+                    <span>{cellScore}</span>
                     +
-                    <span title="best total for everything after it">{minScores[end]}</span>
+                    <span>{minScores[end]}</span>
                   </div>
                 {:else if overflow}
                   <div class="matrix-cell-inf">&infin;</div>
@@ -181,6 +185,8 @@
       </tbody>
     </table>
   </div>
+
+  {@render children?.()}
 
   <div class="summary">
     <div class="summary-title">Chosen line breaks</div>
@@ -275,6 +281,20 @@
     box-shadow: none;
     font-size: var(--text-13);
     color: var(--color-overflow);
+  }
+
+  /* The visible arithmetic key: names the two parts every cell's breakdown
+     subtext already shows (own line's score, then the rest), so the subtext
+     never needs its own inline prose — it just reads against this key instead. */
+  .legend-item--key {
+    margin-left: auto;
+    font-size: var(--text-13);
+    color: var(--color-text-secondary);
+  }
+
+  .legend-key-term {
+    font-weight: 600;
+    color: var(--color-text);
   }
 
   .matrix-scroll {

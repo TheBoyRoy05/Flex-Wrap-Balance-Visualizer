@@ -28,11 +28,9 @@
   </div>
 
   <div class="measure">
-    <ScoreMatrix {activeStart} />
-  </div>
-
-  <div class="measure">
-    <DpStepper />
+    <ScoreMatrix {activeStart}>
+      <DpStepper />
+    </ScoreMatrix>
   </div>
 
   <footer class="measure footer">
