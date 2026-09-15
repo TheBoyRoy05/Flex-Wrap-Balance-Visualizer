@@ -98,6 +98,9 @@
   // revealedCells[start][end] once the evaluate event for that candidate has fired,
   // otherwise absent — this *is* "the matrix starts empty and fills one cell at a
   // time": before any events have fired the map is empty, so every cell renders blank.
+  // A probe event (the single overflow test per row) also marks every end it implies
+  // impossible as revealed in this same pass, at this same step index — one click
+  // rules out the whole rest of the row, not one cell at a time.
   const revealedCells: Map<string, RevealedCell> = $derived.by(() => {
     const map = new Map<string, RevealedCell>();
     for (let i = 0; i <= cellStep; i++) {
@@ -109,6 +112,16 @@
           memoValue: ev.memoValue,
           total: ev.total,
         });
+        if (ev.isProbe) {
+          for (const impliedEnd of ev.impliedEnds ?? []) {
+            map.set(`${ev.start},${impliedEnd}`, {
+              lineScore: ev.lineScore,
+              memoIndex: ev.memoIndex,
+              memoValue: ev.memoValue,
+              total: ev.total,
+            });
+          }
+        }
       }
     }
     return map;
@@ -167,6 +180,23 @@
   // the dependency (memo entry) and the dependent (this cell) are visibly linked.
   function isCurrentCandidate(start: number, end: number): boolean {
     return currentEvent?.kind === 'evaluate' && currentEvent.start === start && currentEvent.end === end;
+  }
+
+  // The one cell actually tested this step, when this step is a probe — the
+  // candidate whose overflow the algorithm discovered. Distinct from the cells
+  // merely implied by it (isProbeConsequence below): same red infinity, but this
+  // is the discovery, not a consequence of it.
+  function isProbeDiscovery(start: number, end: number): boolean {
+    return currentEvent?.kind === 'evaluate' && !!currentEvent.isProbe && currentEvent.start === start && currentEvent.end === end;
+  }
+
+  // Every cell this step's probe rules out without testing it directly — the rest
+  // of the row, ruled impossible in the same step as the one test that found the
+  // first overflow. Quietly distinguished from the tested cell itself via weight/
+  // opacity, not a new color: both are still "overflow", just discovered differently.
+  function isProbeConsequence(start: number, end: number): boolean {
+    return currentEvent?.kind === 'evaluate' && !!currentEvent.isProbe && currentEvent.start === start
+      && (currentEvent.impliedEnds ?? []).includes(end);
   }
 
   function justSettledMemo(index: number): boolean {
@@ -259,6 +289,8 @@
               {@const rowMin = shown && eligible && isRowMinimum(start, end)}
               {@const chosen = shown && eligible && isChosen(start, end)}
               {@const current = isCurrentCandidate(start, end)}
+              {@const probeDiscovery = isProbeDiscovery(start, end)}
+              {@const probeConsequence = isProbeConsequence(start, end)}
               <td
                 class={[
                   'matrix-cell',
@@ -266,6 +298,8 @@
                   rowMin && 'matrix-cell--rowmin',
                   chosen && 'matrix-cell--chosen',
                   current && 'matrix-cell--current',
+                  probeDiscovery && 'matrix-cell--probe-discovery',
+                  probeConsequence && 'matrix-cell--probe-consequence',
                 ]}
               >
                 {#if shown && cell}
@@ -313,22 +347,7 @@
   {@render children?.()}
 
   <div class="summary">
-    <div class="summary-title">Chosen line breaks</div>
-    {#if n === 0}
-      <p class="summary-empty">Enter at least one item size above.</p>
-    {:else}
-      <ol class="summary-list">
-        {#each breaks as end, i (end)}
-          {@const start = i === 0 ? 0 : breaks[i - 1]}
-          {@const chipOverflow = isOverflowingLine(len, start, end, balanceState.capacity)}
-          <li class="summary-chip" class:summary-chip--overflow={chipOverflow}>
-            [{start}, {end}) &middot; len <span class="tnum">{len[start]?.[end]}</span> &middot; score <span class="tnum">{score[start]?.[end]}</span>
-            {#if chipOverflow}
-              <span class="summary-chip-inf" title="overflow: length exceeds capacity">&infin;</span>
-            {/if}
-          </li>
-        {/each}
-      </ol>
+    {#if n > 0}
       <p class="summary-note">
         Total score (sum of squared free space): <span class="summary-total tnum">{totalScore}</span>
         {#if breaks.some((end, i) => isOverflowingLine(len, i === 0 ? 0 : breaks[i - 1], end, balanceState.capacity))}
@@ -635,6 +654,20 @@
     box-shadow: inset 0 0 0 1px var(--color-accent);
   }
 
+  /* The one candidate a probe step actually tests: full-weight overflow ring, so it
+     reads as "discovered here" against the fainter consequence cells beside it —
+     weight/opacity carries the distinction, no third color. */
+  .matrix-cell--probe-discovery {
+    box-shadow: inset 0 0 0 1.5px var(--color-overflow);
+  }
+
+  /* Every cell a probe rules out without testing directly: same overflow red as the
+     discovery cell, but dimmed — a quiet way to say "implied, not tested" without a
+     new hue. Both still show only the infinity glyph, never a total. */
+  .matrix-cell--probe-consequence {
+    opacity: 0.6;
+  }
+
   /* Produced value: the same number the header row shows in the column of the
      same index, now attached to the row that actually settles on it. Left
      hairline separates it from the [start, end) grid it summarizes. */
@@ -789,52 +822,9 @@
     font-size: var(--text-15);
   }
 
-  .summary-title {
-    font-size: var(--text-13);
-    font-weight: 500;
-    color: var(--color-text);
-    margin-bottom: var(--space-12);
-  }
-
-  .summary-empty {
-    font-size: var(--text-15);
-    color: var(--color-text-secondary);
-  }
-
-  .summary-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-8);
-  }
-
   .summary-note {
-    margin-top: var(--space-12);
     font-size: var(--text-15);
     color: var(--color-text-secondary);
-  }
-
-  /* Chip keeps a hairline only (no fill) — enough to read as a distinct entry
-     in the list without stacking a bordered box on top of the summary panel. */
-  .summary-chip {
-    border-radius: var(--radius-6);
-    border: 1px solid var(--color-hairline);
-    padding: var(--space-4) var(--space-12);
-    font-size: var(--text-13);
-    color: var(--color-text);
-  }
-
-  /* Same overflow signal as the matrix cell: a chosen line can still be over
-     capacity (single item wider than the container), and its score of 0 must
-     not read as a clean fit here either. */
-  .summary-chip--overflow {
-    border-color: var(--color-overflow);
-    color: var(--color-overflow);
-  }
-
-  /* Same disqualification meaning as the matrix's infinity glyph — full opacity. */
-  .summary-chip-inf {
-    margin-left: var(--space-4);
-    color: var(--color-overflow);
   }
 
   .summary-total {

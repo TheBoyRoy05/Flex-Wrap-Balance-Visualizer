@@ -258,6 +258,19 @@ export interface CellEvaluateEvent {
   total: number;
   /** True only for the candidate this row ultimately keeps as bestEnd[start]. */
   isChosen: boolean;
+  /** True only for the one candidate per row that actually overflows and got tested —
+   *  the first `end` past `lastFittingEnd[start]`. Line length grows monotonically with
+   *  `end` (each extra item only adds width), so this single failing test is enough for
+   *  the algorithm to know every longer end in the row overflows too, without trying any
+   *  of them. lineScore/memoValue/total above are still real numbers for this candidate
+   *  (the memo entry is always already settled) but it never competes for the row's
+   *  minimum and can never be isChosen. Absent (undefined) on every other event. */
+  isProbe?: boolean;
+  /** Present only when isProbe is true: every `end` from this candidate's `end + 1`
+   *  through `n` — the rest of the row, ruled out by this one test rather than
+   *  individually tried. Consumers render these as impossible in the same step as
+   *  the probe itself. */
+  impliedEnds?: number[];
 }
 
 /** Fired once a row has compared every candidate: settles minScores[start] and,
@@ -272,10 +285,28 @@ export interface CellSettleEvent {
 export type CellEvent = CellEvaluateEvent | CellSettleEvent;
 
 /** Flat, cell-granular replay of the suffix DP: one `evaluate` event per candidate
- *  line considered, one `settle` event per row once its candidates are exhausted,
- *  in the exact order the algorithm produces them (start = n-1 down to 0, candidate
- *  ends in ascending order within each row). Built for step-by-step animation, where
- *  the unit of progress is a single candidate evaluation, not a whole row.
+ *  the algorithm actually tests, one `settle` event per row once that row's
+ *  candidates have all been shown. Built for step-by-step animation, where the
+ *  unit of progress is a single candidate evaluation and no cell may stay blank
+ *  for the run's whole duration.
+ *
+ *  A row's candidates fit up through `lastFittingEnd[start]` and overflow at every
+ *  `end` past it. Line length grows monotonically as `end` increases — each extra
+ *  item only adds width — so the moment one candidate overflows, every longer
+ *  candidate in the row overflows too, without needing its own test. The real
+ *  algorithm exploits exactly this via `lastFittingEnd`: it never scores past that
+ *  bound. So this trace tests each fitting candidate in turn, then — only if the
+ *  row has any overflowing ends left — tests exactly one more (the first one past
+ *  the bound) and reports the rest of the row as ruled out by that single test via
+ *  `impliedEnds`, rather than emitting a separate event per overflowing candidate.
+ *  A row whose fitting bound reaches `n` (nothing overflows) has no probe at all.
+ *
+ *  The DP state (minScores/bestEnd) is updated only by fitting candidates, exactly
+ *  as balancedLineBreaks/traceBalancedLineBreaks compute it — the probe candidate
+ *  is scored for display (its line's own squared free space and the already-settled
+ *  memo entry it would read) but never compared against minScores[start] and never
+ *  eligible to become bestEnd[start]. The implied ends past it are never scored at
+ *  all: the algorithm never visits them, so this trace doesn't either.
  *
  *  Kept separate from traceBalancedLineBreaks and balancedLineBreaks so neither
  *  function's behavior or signature is touched by this addition. */
@@ -286,6 +317,8 @@ export function traceCellEvents(sizes: number[], capacity: number, gap: number):
   const { score, length } = buildMatrix(sizes, capacity, gap);
 
   // Everything fits on one line: same single-row shortcut as the other trace fns.
+  // n === 1 here too, so the row has exactly one candidate (end = n) and it fits —
+  // no probe to add.
   if (length(0, n) <= capacity) {
     const total = score[0][n] as number;
     return [
@@ -309,7 +342,12 @@ export function traceCellEvents(sizes: number[], capacity: number, gap: number):
   const events: CellEvent[] = [];
 
   for (let start = n - 1; start >= 0; start--) {
-    for (let e = start + 1; e <= lastFittingEnd[start]; e++) {
+    const bound = lastFittingEnd[start];
+    const rowStart = events.length;
+
+    // Fitting candidates: end from start+1 through bound. These are exactly what
+    // the real DP scores and compares against minScores[start].
+    for (let e = start + 1; e <= bound; e++) {
       const lineScore = score[start][e] as number;
       const memoValue = minScores[e];
       const total = lineScore + memoValue;
@@ -317,14 +355,40 @@ export function traceCellEvents(sizes: number[], capacity: number, gap: number):
         minScores[start] = total;
         bestEnd[start] = e;
       }
-      // isChosen is filled in below, once bestEnd[start] is final: an earlier
-      // candidate in this row may tie the eventual minimum without being the
-      // one the <= tie-break actually kept.
       events.push({ kind: 'evaluate', start, end: e, lineScore, memoIndex: e, memoValue, total, isChosen: false });
     }
-    for (let i = events.length - 1; i >= 0 && (events[i] as CellEvaluateEvent).start === start; i--) {
+
+    // The single probe: the first end past the fitting bound, if the row has one.
+    // Its own numbers are still real (the memo entry it reads is always already
+    // settled) but it never enters the minScores[start] comparison above, and
+    // every end past it is implied impossible without being scored at all.
+    if (bound < n) {
+      const e = bound + 1;
+      const lineScore = score[start][e] as number;
+      const memoValue = minScores[e];
+      const total = lineScore + memoValue;
+      const impliedEnds: number[] = [];
+      for (let rest = e + 1; rest <= n; rest++) impliedEnds.push(rest);
+      events.push({
+        kind: 'evaluate',
+        start,
+        end: e,
+        lineScore,
+        memoIndex: e,
+        memoValue,
+        total,
+        isChosen: false,
+        isProbe: true,
+        impliedEnds,
+      });
+    }
+
+    // isChosen is filled in once bestEnd[start] is final: an earlier candidate in
+    // this row may tie the eventual minimum without being the one the <= tie-break
+    // actually kept. The probe (if any) is never eligible and stays false.
+    for (let i = events.length - 1; i >= rowStart; i--) {
       const ev = events[i] as CellEvaluateEvent;
-      ev.isChosen = ev.end === bestEnd[start];
+      if (!ev.isProbe) ev.isChosen = ev.end === bestEnd[start];
     }
     events.push({ kind: 'settle', start, settledValue: minScores[start] });
   }
