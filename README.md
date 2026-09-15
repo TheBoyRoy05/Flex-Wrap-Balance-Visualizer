@@ -1,47 +1,47 @@
-# Svelte + TS + Vite
+# flex-wrap: balance
 
-This template should help get you started developing with Svelte and TypeScript in Vite.
+An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap: balance`,
+mirroring the implementation in WebCore.
 
-## Recommended IDE Setup
-
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
-
-## Need an official Svelte framework?
-
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
-
-## Technical considerations
-
-**Why use this over SvelteKit?**
-
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
-
-This template contains as little as possible to get started with Vite + TypeScript + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
-
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
-
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `allowJs` in the TS template?**
-
-While `allowJs: false` would indeed prevent the use of `.js` files in the project, it does not prevent the use of JavaScript syntax in `.svelte` files. In addition, it would force `checkJs: false`, bringing the worst of both worlds: not being able to guarantee the entire codebase is TypeScript, and also having worse typechecking for the existing JavaScript. In addition, there are valid use cases in which a mixed codebase may be relevant.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/rixo/svelte-hmr#svelte-hmr).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```ts
-// store.ts
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+```bash
+npm install
+npm run dev
 ```
+
+## The Algorithm
+
+The goal of balancing items is to homogenize the free space. To achieve this, we aim to minimize the following "score":
+
+$$\min \sum_{line} \texttt{freeSpace}[line.start, line.end)^2$$
+
+Where $\texttt{start}$ and $\texttt{end}$ are both indeces and $\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \texttt{capacity} - [(\texttt{end} - \texttt{start} - 1) * \texttt{gap} + \sum_{i=\texttt{start}}^{\texttt{end}-1} \texttt{itemSize}[i]]$.
+
+### Brute Force
+
+Naively, if we have $n$ items, we have $n-1$ break locations which gives us $O(2^n)$ possible solutions for a brute force search.
+
+### Knuth-Plass
+
+However, we can do better by memoizing scores for subsets of items, giving us an $O(n^2)$ [Dynamic Programming](https://en.wikipedia.org/wiki/Dynamic_programming) solution, see [Knuth-Plass Algorithm](https://en.wikipedia.org/wiki/Knuth%E2%80%93Plass_line-breaking_algorithm).
+
+#### First Pass
+
+Walking backwards through our items for each start, we calculate the best end by finding minimum score where
+
+$$\texttt{minScore}[\texttt{start}] = \min_{\texttt{end} \in [\texttt{start} + 1, \texttt{itemCount}]} \left( \texttt{freeSpace}[\texttt{start}, \texttt{end})^2 + \texttt{minScore}[\texttt{end}] \right)$$
+
+#### Second Pass
+
+Now we know the best end for $\texttt{minScore}[0]$, in our case this is {minScore[0]}. Because it is in column {bestEndForStart[0]}, our next row starts there. We then repeat this, finding the column with the lowest score and using that as our next start until we run out of items.
+
+### Optimizations
+
+1. Since we calculate $\texttt{freeSpace}[\texttt{start}, \texttt{end})$ as the sum of the item sizes in the main $O(n^2)$ loop, we can precompute 
+
+$$\texttt{prefixSum}[i] = i * \texttt{gap} + \sum_{j=0}^{i-1} \texttt{itemSize}[j]$$
+
+This allows us to turn an $O(n)$ addition into an $O(1)$ subtraction: 
+
+$$\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \texttt{capacity} - (\texttt{prefixSum}[\texttt{end}] - \texttt{prefixSum}[\texttt{start}] - \texttt{gap})$$
+
+2. When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediatly and mark the rest of the row as impossible since all item sizes are non-negative so we'll stay above capacity for any larger rows.
