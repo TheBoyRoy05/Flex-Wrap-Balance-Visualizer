@@ -12,9 +12,11 @@ npm run dev
 
 The goal of balancing items is to homogenize the free space. To achieve this, we aim to minimize the following "score":
 
-$$\min \sum_{line} \texttt{freeSpace}[line.start, line.end)^2$$
+$$\min \sum_{line} \texttt{freeSpace}[\texttt{line.start}, \texttt{line.end})^2$$
 
-Where $\texttt{start}$ and $\texttt{end}$ are both indeces and $\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \texttt{capacity} - [(\texttt{end} - \texttt{start} - 1) * \texttt{gap} + \sum_{i=\texttt{start}}^{\texttt{end}-1} \texttt{itemSize}[i]]$.
+Where $\texttt{start}$ and $\texttt{end}$ are both indices and 
+
+$$\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \texttt{capacity} - \left((\texttt{end} - 1 - \texttt{start}) * \texttt{gap} + \sum_{i=\texttt{start}}^{\texttt{end}-1} \texttt{itemSize}[i]\right)$$
 
 ### Brute Force
 
@@ -22,11 +24,11 @@ Naively, if we have $n$ items, we have $n-1$ break locations which gives us $O(2
 
 ### Knuth-Plass
 
-However, we can do better by memoizing scores for subsets of items, giving us an $O(n^2)$ [Dynamic Programming](https://en.wikipedia.org/wiki/Dynamic_programming) solution, see [Knuth-Plass Algorithm](https://en.wikipedia.org/wiki/Knuth%E2%80%93Plass_line-breaking_algorithm).
+However, we can do better by memoizing scores for suffixes of each item, i.e. for each item $i$, memoize the best scores for the remaining $n - i$ items. This gives us an $O(n^2)$ [Dynamic Programming](https://en.wikipedia.org/wiki/Dynamic_programming) solution, see [Knuth-Plass Algorithm](https://en.wikipedia.org/wiki/Knuth%E2%80%93Plass_line-breaking_algorithm) for more background.
 
 #### First Pass
 
-Walking backwards through our items for each start, we calculate the best end by finding minimum score where
+Walking backwards through our items, for each start, we calculate the best end by finding minimum score where
 
 $$\texttt{minScore}[\texttt{start}] = \min_{\texttt{end} \in [\texttt{start} + 1, \texttt{itemCount}]} \left( \texttt{freeSpace}[\texttt{start}, \texttt{end})^2 + \texttt{minScore}[\texttt{end}] \right)$$
 
@@ -44,4 +46,4 @@ This allows us to turn an $O(n)$ addition into an $O(1)$ subtraction:
 
 $$\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \texttt{capacity} - (\texttt{prefixSum}[\texttt{end}] - \texttt{prefixSum}[\texttt{start}] - \texttt{gap})$$
 
-2. When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediatly and mark the rest of the row as impossible since all item sizes are non-negative so we'll stay above capacity for any larger rows.
+2. When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediately and mark the rest of the row as impossible since all item sizes are non-negative so we'll stay above capacity for any larger rows.

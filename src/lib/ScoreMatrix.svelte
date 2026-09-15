@@ -18,7 +18,7 @@
   // against.
   const cols = $derived(Array.from({ length: n }, (_, i) => i + 1)); // end: 1..n
 
-  const { score, len, breaks, bestEnd } = $derived(balanceState.result);
+  const { len, bestEnd } = $derived(balanceState.result);
 
   // The largest `end` genuinely considered for each `start` — the DP never looks
   // past this, because a line stretching further has already overflowed. A cell
@@ -47,18 +47,6 @@
   function isOverflow(start: number, end: number): boolean {
     return end > start && isOverflowingLine(len, start, end, balanceState.capacity);
   }
-
-  // The chosen line segments are [prevBreak, break) for each entry in `breaks`.
-  // Not used directly for cell coloring — see `chosenCellsAtStep` below, which is
-  // the same set but gated on whether the traceback has actually walked that far
-  // yet. Kept here for `totalScore`, which reads the final path regardless of
-  // animation progress (the summary line is a fact about the algorithm's result,
-  // not about what the viewer has stepped through).
-
-  const totalScore = $derived(breaks.reduce((sum, end, i) => {
-    const start = i === 0 ? 0 : breaks[i - 1];
-    return sum + (score[start]?.[end] ?? 0);
-  }, 0));
 
   // bestEnd[start] is, by definition, the end that achieves minScores[start] —
   // the row's minimum total. True for every row, whether or not that row lies
@@ -351,17 +339,6 @@
 
 
   {@render children?.()}
-
-  <div class="summary">
-    {#if n > 0}
-      <p class="summary-note">
-        Total score (sum of squared free space): <span class="summary-total tnum">{totalScore}</span>
-        {#if breaks.some((end, i) => isOverflowingLine(len, i === 0 ? 0 : breaks[i - 1], end, balanceState.capacity))}
-          <span class="summary-total-overflow-note">— includes a line that overflows</span>
-        {/if}
-      </p>
-    {/if}
-  </div>
 </div>
 
 <style>
@@ -823,27 +800,6 @@
     justify-content: center;
     height: calc(var(--text-13) * var(--lh-body) * 2);
     font-size: var(--text-15);
-    color: var(--color-overflow);
-  }
-
-  .summary {
-    border-top: 1px solid var(--color-hairline);
-    padding-top: var(--space-16);
-    font-size: var(--text-15);
-  }
-
-  .summary-note {
-    font-size: var(--text-15);
-    color: var(--color-text-secondary);
-  }
-
-  .summary-total {
-    font-weight: 600;
-    color: var(--color-text);
-  }
-
-  .summary-total-overflow-note {
-    font-weight: 400;
     color: var(--color-overflow);
   }
 </style>

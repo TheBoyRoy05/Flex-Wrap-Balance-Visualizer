@@ -3,6 +3,7 @@
   import LinePreview from './lib/LinePreview.svelte';
   import ScoreMatrix from './lib/ScoreMatrix.svelte';
   import DpStepper from './lib/DpStepper.svelte';
+  import AlgorithmExplainer from './lib/AlgorithmExplainer.svelte';
   import { balanceState } from './lib/state.svelte';
 
   // The row the stepper is currently deciding, read out of the current cell event so
@@ -15,10 +16,7 @@
 <main class="page">
   <header class="measure header">
     <span class="eyebrow">flex-wrap: balance</span>
-    <h1>Score matrix visualizer</h1>
-    <p class="subhead">
-      Every candidate line, scored — the accent marks what the DP picked.
-    </p>
+    <h1>Score Matrix Visualizer</h1>
     <div class="objective" role="img" aria-label="minimizes the sum over lines of the squared free space of each line">
       <span class="objective-label">minimizes</span>
       <math class="objective-formula">
@@ -50,10 +48,9 @@
     </ScoreMatrix>
   </div>
 
-  <footer class="measure footer">
-    Pure algorithm mirrors WebCore's <code>balancedLineBreaks</code> &mdash; see
-    <code>src/lib/balance.ts</code>.
-  </footer>
+  <div class="measure">
+    <AlgorithmExplainer />
+  </div>
 </main>
 
 <style>
@@ -78,15 +75,6 @@
     color: var(--color-accent);
   }
 
-  .subhead {
-    font-size: var(--text-15);
-    color: var(--color-text-secondary);
-    /* Text measure constraint stays internal to the line itself — the header's
-       container shares the page's one content edge (.measure), but a long
-       sentence at 1120px would run past a comfortable reading width. */
-    max-width: var(--measure-text);
-  }
-
   /* The objective, rendered once as a formula rather than a fourth sentence —
      MathML, not a LaTeX/KaTeX dependency, so a two-line stack of native <math>
      elements does the sum-of-squares typesetting the browser already knows
@@ -106,12 +94,5 @@
   .objective-formula {
     font-size: var(--text-17);
     color: var(--color-text);
-  }
-
-  .footer {
-    border-top: 1px solid var(--color-hairline);
-    padding-top: var(--space-24);
-    font-size: var(--text-13);
-    color: var(--color-text-secondary);
   }
 </style>
