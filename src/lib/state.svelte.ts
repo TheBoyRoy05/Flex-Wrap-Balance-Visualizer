@@ -15,9 +15,9 @@ import {
 } from './balance';
 
 class BalanceState {
-  sizesInput = $state('40, 40, 40, 40, 90');
-  capacity = $state(120);
-  gap = $state(0);
+  sizesInput = $state('50, 40, 40, 50, 100');
+  capacity = $state(150);
+  gap = $state(10);
   // Which cell-fill event the animation is showing. -1 is the empty/reset state:
   // no events fired yet, matrix blank, memo at its base case only. Genuine UI state —
   // no input combination determines "where the user has stepped to" — but it can point

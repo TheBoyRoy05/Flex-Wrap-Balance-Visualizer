@@ -50,7 +50,6 @@
     <input
       type="text"
       bind:value={balanceState.sizesInput}
-      placeholder="40, 40, 40, 100"
       class="field-input"
     />
   </label>

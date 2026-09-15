@@ -2,6 +2,8 @@
 
 An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap: balance`, mirroring the implementation in [WebKit](https://github.com/WebKit/WebKit/blob/74efecb8e0d1e43dea71093f25a1aab4ec9383ff/Source/WebCore/layout/formattingContexts/flex/FlexLineBreaker.cpp). Background: [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance).
 
+![Hero](/src/assets/hero.png)
+
 ## The Core Algorithm
 
 The goal of balancing items is to homogenize the free space. To achieve this, we aim to minimize the following "score":
