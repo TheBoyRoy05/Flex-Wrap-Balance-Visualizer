@@ -49,10 +49,40 @@
   }
 
   // bestEnd[start] is, by definition, the end that achieves minScores[start] —
-  // the row's minimum total. True for every row, whether or not that row lies
-  // on the final path. This is the structural fact the legend was missing.
+  // the row's minimum total, known only once the whole row has been scanned.
+  // Used solely to cross-check the running mark below at settle time; the
+  // rendered white box itself must never read this array directly (see
+  // runningBestEndAtStep), or it would show the winner before the scan that
+  // decides it has finished.
   function isRowMinimum(start: number, end: number): boolean {
     return bestEnd[start] === end;
+  }
+
+  // The running best-so-far, replaying the DP's own scan one revealed candidate
+  // at a time — never derived from bestEnd. Only non-probe evaluate events
+  // compete (a probe candidate overflows and is disqualified on arrival, so it
+  // can never take the title, matching isEligible/isOverflow above). Comparison
+  // is `<=`, mirroring the `<=` in balance.ts's own DP loop exactly: a later
+  // candidate that only ties the incumbent still takes over, which is the
+  // documented tie-break favoring the last end achieving the minimum. A row
+  // with no revealed candidate yet has no entry, so it shows no box at all.
+  const runningBestEndAtStep: Map<number, number> = $derived.by(() => {
+    const bestEndSoFar = new Map<number, number>();
+    const bestTotalSoFar = new Map<number, number>();
+    for (let i = 0; i <= cellStep; i++) {
+      const ev = events[i];
+      if (ev?.kind !== 'evaluate' || ev.isProbe) continue;
+      const incumbent = bestTotalSoFar.get(ev.start);
+      if (incumbent === undefined || ev.total <= incumbent) {
+        bestTotalSoFar.set(ev.start, ev.total);
+        bestEndSoFar.set(ev.start, ev.end);
+      }
+    }
+    return bestEndSoFar;
+  });
+
+  function isRunningBest(start: number, end: number): boolean {
+    return runningBestEndAtStep.get(start) === end;
   }
 
   // --- Cell-by-cell fill animation state ---------------------------------
@@ -156,6 +186,25 @@
   // point: the same number landing in both the settles-at column and the memo row).
   const currentEvent = $derived(cellStep >= 0 ? events[cellStep] : undefined);
 
+  // Consistency guard, not a rendering concern: at the exact step a row settles,
+  // the running mark's current end for that row must equal bestEnd[start] — the
+  // DP's own answer. This is a genuine side effect (a console assertion against
+  // the outside world), never a derived value, so it belongs in $effect rather
+  // than in one of the $derived.by blocks above. A mismatch means the `<=` replay
+  // above has drifted from balance.ts's own comparison, which is a bug to surface
+  // loudly, not swallow.
+  $effect(() => {
+    const ev = currentEvent;
+    if (ev?.kind !== 'settle') return;
+    const runningEnd = runningBestEndAtStep.get(ev.start);
+    if (runningEnd !== bestEnd[ev.start]) {
+      console.error(
+        `[ScoreMatrix] running best-so-far mark diverged from bestEnd at settle: ` +
+          `start=${ev.start} runningEnd=${runningEnd} bestEnd=${bestEnd[ev.start]}`,
+      );
+    }
+  });
+
   function isRevealed(start: number, end: number): boolean {
     return revealedCells.has(`${start},${end}`);
   }
@@ -247,10 +296,10 @@
           {#each cols as end (end)}
             <th class="matrix-head tnum">{end}</th>
           {/each}
-          <th class="matrix-head matrix-head--settled"><code>minScore</code></th>
+          <th class="matrix-head matrix-head--settled"><code>minScore[start]</code></th>
         </tr>
         <tr>
-          <th class="matrix-corner matrix-corner--sub tnum"><code>minScore</code></th>
+          <th class="matrix-corner matrix-corner--sub tnum"><code>minScore[end]</code></th>
           {#each cols as end (end)}
             {@const memoJustSettled = justSettledMemo(end)}
             {@const memoReading = isReadingMemo(end)}
@@ -276,7 +325,7 @@
               {@const voidCell = isVoid(start, end)}
               {@const cell = revealed(start, end)}
               {@const shown = isRevealed(start, end)}
-              {@const rowMin = shown && eligible && isRowMinimum(start, end)}
+              {@const rowMin = shown && eligible && isRunningBest(start, end)}
               {@const chosen = shown && eligible && isChosen(start, end)}
               {@const current = isCurrentCandidate(start, end)}
               {@const probeDiscovery = isProbeDiscovery(start, end)}

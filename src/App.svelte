@@ -6,10 +6,16 @@
   import { balanceState } from './lib/state.svelte';
 
   // The row the stepper is currently deciding, read out of the current cell event so
-  // the matrix can highlight it. Undefined once the event list is empty (no items) or
-  // the animation is at the empty/reset state (index -1, nothing evaluated yet).
+  // the matrix can highlight it. Undefined once the event list is empty (no items),
+  // the animation is at the empty/reset state (index -1, nothing evaluated yet), the
+  // current event is a traceback link (that phase highlights via chosen cells, not a
+  // row), or the final result event (no single row applies to "the chosen breaks").
   const currentCellEvent = $derived(balanceState.cellEvents[balanceState.clampedCellStep]);
-  const activeStart = $derived(currentCellEvent?.kind !== 'traceback' ? currentCellEvent?.start : undefined);
+  const activeStart = $derived(
+    currentCellEvent?.kind === 'evaluate' || currentCellEvent?.kind === 'settle'
+      ? currentCellEvent.start
+      : undefined,
+  );
 </script>
 
 <main class="page">

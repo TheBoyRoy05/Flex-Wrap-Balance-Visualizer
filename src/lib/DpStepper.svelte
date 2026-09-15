@@ -5,7 +5,7 @@
   // `balanceState.cellEvents` already carries that real order, so stepping through it in
   // sequence is stepping through the algorithm's own execution, not a story imposed after.
   import { balanceState } from './state.svelte';
-  import type { CellEvaluateEvent, TracebackStepEvent } from './balance';
+  import type { CellEvaluateEvent, TracebackStepEvent, ResultEvent } from './balance';
   import { prefersReducedMotion } from 'svelte/motion';
 
   const events = $derived(balanceState.cellEvents);
@@ -82,9 +82,23 @@
     return n === Number.POSITIVE_INFINITY ? '\u221e' : String(n);
   }
 
+  // Renders `breaks` (one-past-last-item indices) as the [start, end) segments
+  // they describe — the same range notation `.stepper-eval-range` already uses
+  // for a single candidate/traceback link, just one chip per line instead of one.
+  function segments(breaks: number[]): { start: number; end: number }[] {
+    const result: { start: number; end: number }[] = [];
+    let start = 0;
+    for (const end of breaks) {
+      result.push({ start, end });
+      start = end;
+    }
+    return result;
+  }
+
   const evalEvent = $derived(event?.kind === 'evaluate' ? (event as CellEvaluateEvent) : undefined);
   const settleEvent = $derived(event?.kind === 'settle' ? event : undefined);
   const tracebackEvent = $derived(event?.kind === 'traceback' ? (event as TracebackStepEvent) : undefined);
+  const resultEvent = $derived(event?.kind === 'result' ? (event as ResultEvent) : undefined);
 </script>
 
 <div class="stepper">
@@ -110,14 +124,14 @@
   <div class="stepper-body">
     {#if evalEvent}
       <p class="stepper-headline tnum">
-        row <strong>{evalEvent.start}</strong> &middot; candidate end <strong>{evalEvent.end}</strong>
+        row <strong>{evalEvent.start}</strong> | candidate end <strong>{evalEvent.end}</strong>
       </p>
       <div class="stepper-eval tnum">
         <span class="stepper-eval-range">[{evalEvent.start}, {evalEvent.end})</span>
         <span class="stepper-eval-items">{itemsLabel(evalEvent.start, evalEvent.end)}</span>
         <span class="stepper-eval-math">
-          reads memo[<strong>{evalEvent.memoIndex}</strong>] = {fmt(evalEvent.memoValue)}
-          &middot; {fmt(evalEvent.lineScore)} + {fmt(evalEvent.memoValue)} = <strong>{fmt(evalEvent.total)}</strong>
+          reads minScore[<strong>{evalEvent.memoIndex}</strong>] = {fmt(evalEvent.memoValue)}
+          | {fmt(evalEvent.lineScore)} + {fmt(evalEvent.memoValue)} = <strong>{fmt(evalEvent.total)}</strong>
         </span>
         {#if evalEvent.isChosen}
           <span class="stepper-eval-tag">wins so far</span>
@@ -128,8 +142,8 @@
         row <strong>{settleEvent.start}</strong> settles
       </p>
       <p class="stepper-settle tnum">
-        memo[<strong>{settleEvent.start}</strong>] &larr; <strong>{fmt(settleEvent.settledValue)}</strong>
-        &middot; now readable by rows &lt; {settleEvent.start}
+        minScore[<strong>{settleEvent.start}</strong>] &larr; <strong>{fmt(settleEvent.settledValue)}</strong>
+        | now readable by rows &lt; {settleEvent.start}
       </p>
     {:else if tracebackEvent}
       <p class="stepper-headline tnum">
@@ -140,8 +154,18 @@
         <span class="stepper-eval-items">{itemsLabel(tracebackEvent.start, tracebackEvent.end)}</span>
         <span class="stepper-eval-tag">on chosen path</span>
       </div>
+    {:else if resultEvent}
+      <p class="stepper-headline tnum">chosen line breaks</p>
+      <div class="stepper-result">
+        {#each segments(resultEvent.breaks) as seg (seg.start)}
+          <div class="stepper-eval tnum">
+            <span class="stepper-eval-range">[{seg.start}, {seg.end})</span>
+            <span class="stepper-eval-items">{itemsLabel(seg.start, seg.end)}</span>
+          </div>
+        {/each}
+      </div>
     {:else}
-      <p class="stepper-headline tnum">matrix empty &middot; memo[n] = 0</p>
+      <p class="stepper-headline tnum">matrix empty | minScore[n] = 0</p>
     {/if}
   </div>
 </div>
@@ -250,6 +274,16 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: var(--ls-none);
+  }
+
+  /* Final-step layout only: one .stepper-eval chip per chosen segment, stacked —
+     same chip look the traceback step already uses for a single link, just one
+     per line instead of one link. No new panel/heading, per the task: the chips
+     themselves are the entire final-step body. */
+  .stepper-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
   }
 
   .stepper-settle {

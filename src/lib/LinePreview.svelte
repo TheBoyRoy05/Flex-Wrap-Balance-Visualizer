@@ -212,10 +212,16 @@
     border-bottom-color: var(--color-overflow);
   }
 
-  /* Item chips keep a minimal fill (no border) so proportional widths still read
-     as distinct blocks — removing this would lose the "line is made of items"
-     shape that the geometry exists to show. Monochrome: items don't carry meaning,
-     so they don't get the accent. */
+  /* Item chips: accent border in both panels, per this task. `border-box` sizing
+     keeps the 1px border inside the runtime-computed `width` (see `itemPx` above)
+     rather than adding to it — the geometry is proportional to `capacity`, and a
+     border that grew the box would throw that proportion off. Border color is the
+     only change here: width stays 1px, box model stays border-box. */
+  /* Item chips: accent border in both panels, per this task. `border-box` sizing
+     keeps the 1px border inside the runtime-computed `width` (see `itemPx` above)
+     rather than adding to it — the geometry is proportional to `capacity`, and a
+     border that grew the box would throw that proportion off. Border color is the
+     only change here: width stays 1px, box model stays border-box. */
   .item {
     display: flex;
     align-items: center;
@@ -224,7 +230,7 @@
     flex: 0 0 auto;
     border-radius: var(--radius-6);
     background: var(--color-surface);
-    border: 1px solid var(--color-hairline);
+    border: 1px solid var(--color-accent);
     box-sizing: border-box;
     overflow: hidden;
   }

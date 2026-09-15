@@ -295,7 +295,20 @@ export interface TracebackStepEvent {
   end: number;
 }
 
-export type CellEvent = CellEvaluateEvent | CellSettleEvent | TracebackStepEvent;
+/** Fired exactly once, after every traceback link has been walked: states the
+ *  final answer as the list of chosen line segments. Kept as its own event kind
+ *  rather than folded into the last `TracebackStepEvent` — that event's job is
+ *  "this one link joined the chosen path", not "here is the whole path", and
+ *  conflating them would make a consumer choose between animating the last link
+ *  and presenting the summary. `breaks` is exactly `BalanceResult.breaks` for the
+ *  same input: this event never computes its own answer, only reports the one
+ *  `balancedLineBreaks`/the traceback walk above already produced. */
+export interface ResultEvent {
+  kind: 'result';
+  breaks: number[];
+}
+
+export type CellEvent = CellEvaluateEvent | CellSettleEvent | TracebackStepEvent | ResultEvent;
 
 /** Flat, cell-granular replay of the suffix DP: one `evaluate` event per candidate
  *  the algorithm actually tests, one `settle` event per row once that row's
@@ -338,6 +351,7 @@ export function traceCellEvents(sizes: number[], capacity: number, gap: number):
       { kind: 'evaluate', start: 0, end: n, lineScore: total, memoIndex: n, memoValue: 0, total, isChosen: true },
       { kind: 'settle', start: 0, settledValue: total },
       { kind: 'traceback', start: 0, end: n },
+      { kind: 'result', breaks: [n] },
     ];
   }
 
@@ -412,11 +426,19 @@ export function traceCellEvents(sizes: number[], capacity: number, gap: number):
   // own dependency order (a row's bestEnd is only meaningful once its comparisons
   // are done), and keeps "which cells are chosen" a decision made strictly after
   // "what is each row's own minimum", never simultaneously with it.
+  const breaks: number[] = [];
   for (let start = 0; start < n; ) {
     const end = bestEnd[start];
     events.push({ kind: 'traceback', start, end });
+    breaks.push(end);
     start = end;
   }
+
+  // Final event: states the answer the walk above just assembled. `breaks` here
+  // is exactly the list of `end`s pushed by the traceback loop, so this event can
+  // never disagree with the blue cells the reader just watched turn chosen — it's
+  // the same array, not a second computation of it.
+  events.push({ kind: 'result', breaks });
 
   return events;
 }
