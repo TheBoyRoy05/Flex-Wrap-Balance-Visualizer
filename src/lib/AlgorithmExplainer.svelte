@@ -34,11 +34,11 @@
         <msup>
           <mrow>
             <mtext class="algorithm-mathcode">freeSpace</mtext>
-            <mo>[</mo>
+            <mo stretchy="false">[</mo>
             <mtext class="algorithm-mathcode">line.start</mtext>
             <mo>,</mo>
             <mtext class="algorithm-mathcode">line.end</mtext>
-            <mo>)</mo>
+            <mo stretchy="false">)</mo>
           </mrow>
           <mn>2</mn>
         </msup>
@@ -50,22 +50,22 @@
       <math class="algorithm-formula">
         <mrow>
           <mtext class="algorithm-mathcode">freeSpace</mtext>
-          <mo>[</mo>
+          <mo stretchy="false">[</mo>
           <mtext class="algorithm-mathcode">start</mtext>
           <mo>,</mo>
           <mtext class="algorithm-mathcode">end</mtext>
-          <mo>)</mo>
+          <mo stretchy="false">)</mo>
           <mo>=</mo>
           <mtext class="algorithm-mathcode">capacity</mtext>
           <mo>&minus;</mo>
-          <mo>[</mo>
-          <mo>(</mo>
+          <mo stretchy="false">[</mo>
+          <mo stretchy="false">(</mo>
           <mtext class="algorithm-mathcode">end</mtext>
           <mo>&minus;</mo>
           <mtext class="algorithm-mathcode">start</mtext>
           <mo>&minus;</mo>
           <mn>1</mn>
-          <mo>)</mo>
+          <mo stretchy="false">)</mo>
           <mo>*</mo>
           <mtext class="algorithm-mathcode">gap</mtext>
           <mo>+</mo>
@@ -83,27 +83,27 @@
             </mrow>
           </munderover>
           <mtext class="algorithm-mathcode">itemSize</mtext>
-          <mo>[</mo>
+          <mo stretchy="false">[</mo>
           <mi>i</mi>
-          <mo>]</mo>
-          <mo>]</mo>
+          <mo stretchy="false">]</mo>
+          <mo stretchy="false">]</mo>
         </mrow>
       </math>.
     </p>
 
     <h3>Brute Force</h3>
     <p>
-      Naively, if we have <math class="algorithm-formula"><mi>n</mi></math> items, we have
-      <math class="algorithm-formula"><mi>n</mi><mo>&minus;</mo><mn>1</mn></math>
+      Naively, if we have <math class="algorithm-formula"><mrow><mi>n</mi></mrow></math> items, we have
+      <math class="algorithm-formula"><mrow><mi>n</mi><mo>&minus;</mo><mn>1</mn></mrow></math>
       break locations which gives us
-      <math class="algorithm-formula"><mi>O</mi><mo>(</mo><msup><mn>2</mn><mi>n</mi></msup><mo>)</mo></math>
+      <math class="algorithm-formula"><mrow><mi>O</mi><mo stretchy="false">(</mo><msup><mn>2</mn><mi>n</mi></msup><mo stretchy="false">)</mo></mrow></math>
       possible solutions for a brute force search.
     </p>
 
     <h3>Knuth-Plass</h3>
     <p>
       However, we can do better by memoizing scores for subsets of items, giving us an
-      <math class="algorithm-formula"><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math>
+      <math class="algorithm-formula"><mrow><mi>O</mi><mo stretchy="false">(</mo><msup><mi>n</mi><mn>2</mn></msup><mo stretchy="false">)</mo></mrow></math>
       <a href="https://en.wikipedia.org/wiki/Dynamic_programming" target="_blank" rel="noopener noreferrer"
         >Dynamic Programming</a
       >
@@ -124,50 +124,50 @@
     <math class="algorithm-formula algorithm-formula--display" display="block">
       <mrow>
         <mtext class="algorithm-mathcode">minScore</mtext>
-        <mo>[</mo>
+        <mo stretchy="false">[</mo>
         <mtext class="algorithm-mathcode">start</mtext>
-        <mo>]</mo>
+        <mo stretchy="false">]</mo>
         <mo>=</mo>
         <munder>
           <mo>min</mo>
           <mrow>
             <mtext class="algorithm-mathcode">end</mtext>
             <mo>&isin;</mo>
-            <mo>[</mo>
+            <mo stretchy="false">[</mo>
             <mtext class="algorithm-mathcode">start</mtext>
             <mo>+</mo>
             <mn>1</mn>
             <mo>,</mo>
             <mtext class="algorithm-mathcode">itemCount</mtext>
-            <mo>]</mo>
+            <mo stretchy="false">]</mo>
           </mrow>
         </munder>
         <mrow>
-          <mo>(</mo>
+          <mo stretchy="false">(</mo>
           <msup>
             <mrow>
               <mtext class="algorithm-mathcode">freeSpace</mtext>
-              <mo>[</mo>
+              <mo stretchy="false">[</mo>
               <mtext class="algorithm-mathcode">start</mtext>
               <mo>,</mo>
               <mtext class="algorithm-mathcode">end</mtext>
-              <mo>)</mo>
+              <mo stretchy="false">)</mo>
             </mrow>
             <mn>2</mn>
           </msup>
           <mo>+</mo>
           <mtext class="algorithm-mathcode">minScore</mtext>
-          <mo>[</mo>
+          <mo stretchy="false">[</mo>
           <mtext class="algorithm-mathcode">end</mtext>
-          <mo>]</mo>
-          <mo>)</mo>
+          <mo stretchy="false">]</mo>
+          <mo stretchy="false">)</mo>
         </mrow>
       </mrow>
     </math>
 
     <h4>Second Pass</h4>
     <p>
-      Now we know the best end for <code>minScore</code>[0], in our case this is
+      Now we know the best end for <code>minScore[0]</code>, in our case this is
       <code class="algorithm-live">{minScoreAtZero}</code>. Because it is in column
       <code class="algorithm-live">{bestEndForZero}</code>, our next row starts there. We then
       repeat this, finding the column with the lowest score and using that as our next start
@@ -181,22 +181,22 @@
         <math class="algorithm-formula">
           <mrow>
             <mtext class="algorithm-mathcode">freeSpace</mtext>
-            <mo>[</mo>
+            <mo stretchy="false">[</mo>
             <mtext class="algorithm-mathcode">start</mtext>
             <mo>,</mo>
             <mtext class="algorithm-mathcode">end</mtext>
-            <mo>)</mo>
+            <mo stretchy="false">)</mo>
           </mrow>
         </math>
         as the sum of the item sizes in the main
-        <math class="algorithm-formula"><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math>
+        <math class="algorithm-formula"><mrow><mi>O</mi><mo stretchy="false">(</mo><msup><mi>n</mi><mn>2</mn></msup><mo stretchy="false">)</mo></mrow></math>
         loop, we can precompute
         <math class="algorithm-formula">
           <mrow>
             <mtext class="algorithm-mathcode">prefixSum</mtext>
-            <mo>[</mo>
+            <mo stretchy="false">[</mo>
             <mi>i</mi>
-            <mo>]</mo>
+            <mo stretchy="false">]</mo>
             <mo>=</mo>
             <mi>i</mi>
             <mo>*</mo>
@@ -208,38 +208,39 @@
               <mrow><mi>i</mi><mo>&minus;</mo><mn>1</mn></mrow>
             </munderover>
             <mtext class="algorithm-mathcode">itemSize</mtext>
-            <mo>[</mo>
+            <mo stretchy="false">[</mo>
             <mi>j</mi>
-            <mo>]</mo>
+            <mo stretchy="false">]</mo>
           </mrow>
-        </math>. This allows us to turn an <math class="algorithm-formula"><mi>O</mi><mo>(</mo><mi>n</mi><mo>)</mo></math>
-        addition into an <math class="algorithm-formula"><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></math> subtraction:
+        </math>. This allows us to turn an <math class="algorithm-formula"><mrow><mi>O</mi><mo stretchy="false">(</mo><mi>n</mi><mo stretchy="false">)</mo></mrow></math>
+        addition into an <math class="algorithm-formula"><mrow><mi>O</mi><mo stretchy="false">(</mo><mn>1</mn><mo stretchy="false">)</mo></mrow></math> subtraction:
         <math class="algorithm-formula algorithm-formula--display" display="block">
           <mrow>
             <mtext class="algorithm-mathcode">freeSpace</mtext>
-            <mo>[</mo>
+            <mo stretchy="false">[</mo>
             <mtext class="algorithm-mathcode">start</mtext>
             <mo>,</mo>
             <mtext class="algorithm-mathcode">end</mtext>
-            <mo>)</mo>
+            <mo stretchy="false">)</mo>
             <mo>=</mo>
             <mtext class="algorithm-mathcode">capacity</mtext>
             <mo>&minus;</mo>
-            <mo>(</mo>
+            <mo stretchy="false">(</mo>
             <mtext class="algorithm-mathcode">prefixSum</mtext>
-            <mo>[</mo>
+            <mo stretchy="false">[</mo>
             <mtext class="algorithm-mathcode">end</mtext>
-            <mo>]</mo>
+            <mo stretchy="false">]</mo>
             <mo>&minus;</mo>
             <mtext class="algorithm-mathcode">prefixSum</mtext>
-            <mo>[</mo>
+            <mo stretchy="false">[</mo>
             <mtext class="algorithm-mathcode">start</mtext>
-            <mo>]</mo>
+            <mo stretchy="false">]</mo>
             <mo>&minus;</mo>
             <mtext class="algorithm-mathcode">gap</mtext>
-            <mo>)</mo>
+            <mo stretchy="false">)</mo>
+            <mo>.</mo>
           </mrow>
-        </math>.
+        </math>
       </li>
       <li>
         When looping through the ends for each start, if we overflow the capacity (red boxes), we
@@ -264,8 +265,9 @@
     align-items: center;
     gap: var(--space-8);
     padding-block: var(--space-16);
-    font-size: var(--text-15);
-    font-weight: 500;
+    font-size: var(--text-21);
+    font-weight: 600;
+    letter-spacing: var(--ls-21);
     color: var(--color-text);
     cursor: pointer;
     list-style: none;
@@ -315,19 +317,37 @@
   .algorithm-body {
     display: flex;
     flex-direction: column;
-    gap: var(--space-16);
+    gap: var(--space-12);
     max-width: var(--measure-text);
     padding-bottom: var(--space-48);
     font-size: var(--text-15);
-    color: var(--color-text-secondary);
+    color: var(--color-text);
+  }
+
+  /* Tighten a heading to the paragraph/formula that starts its section, and
+     pull a display formula up against the paragraph whose sentence it
+     continues, so prose and formula read as one passage rather than a stack
+     of same-weight disconnected blocks. The gap before a heading (a new
+     section starting) stays the wider rhythm above. */
+  .algorithm-body h3,
+  .algorithm-body h4 {
+    margin-top: var(--space-8);
+  }
+
+  .algorithm-body h3 + p,
+  .algorithm-body h3 + math,
+  .algorithm-body h4 + p,
+  .algorithm-body h4 + math,
+  .algorithm-body p + math.algorithm-formula--display,
+  .algorithm-body math.algorithm-formula--display + p {
+    margin-top: calc(-1 * var(--space-8));
   }
 
   .algorithm-body h3 {
     margin: 0;
     font-family: var(--sans);
     font-weight: 600;
-    font-size: var(--text-21);
-    letter-spacing: var(--ls-21);
+    font-size: var(--text-17);
     color: var(--color-text);
   }
 
@@ -335,7 +355,7 @@
     margin: 0;
     font-family: var(--sans);
     font-weight: 600;
-    font-size: var(--text-17);
+    font-size: var(--text-15);
     color: var(--color-text);
   }
 
@@ -398,11 +418,32 @@
     font-size: 0.9em;
   }
 
-  /* The two live placeholders: same visual language as the static <code> chip
-     (app.css), so they read as "a piece of code" like every other identifier in
-     this passage, while still being the one thing on the page that is a number,
-     not a word. */
-  .algorithm-live {
+  /* Identifier styling for this section, made uniform: plain monospace text,
+     not the global `code` chip (background/padding/inline-flex) — the section
+     is dense with identifiers (start, end, minScore[0], ...) and boxing every
+     one would read as a wall of buttons. `minScore[0]` is written as one
+     `<code>` string so its subscript-style index renders as a single unit
+     rather than a boxed name with an unboxed index trailing it. */
+  .algorithm-body code {
+    display: inline;
+    padding: 0;
+    border-radius: 0;
+    background: none;
     font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+  }
+
+  /* The two live placeholders read as values inside the sentence, not as input
+     fields: monospace + tabular-nums for numeric identity, no chip background/
+     padding/border-radius — those belong to the standalone <code> legend key
+     in ScoreMatrix, not to a number sitting mid-sentence in prose. */
+  .algorithm-live {
+    display: inline;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
   }
 </style>

@@ -233,7 +233,7 @@
       overflows
     </span>
     <span class="legend-item legend-item--key" aria-label="cell total equals free squared plus minScore at end">
-      total = <span class="legend-key-term">free&sup2;</span> + <span class="legend-key-term"><code>minScore</code>[end]</span>
+      <code class="legend-key-code">total = free² + minScore[end]</code>
     </span>
   </div>
 
@@ -423,8 +423,16 @@
     color: var(--color-text-secondary);
   }
 
-  .legend-key-term {
-    font-weight: 600;
+  /* One code element, one continuous string — overrides the global `code`
+     chip (inline-flex, background, padding) so the whole expression reads as
+     a single line of monospace, not an assembled row of boxed pieces. The
+     free² term uses U+00B2 SUPERSCRIPT TWO so the exponent survives as plain
+     text inside <code> rather than needing its own <sup> or MathML box. */
+  .legend-key-code {
+    display: inline;
+    padding: 0;
+    border-radius: 0;
+    background: none;
     color: var(--color-text);
   }
 

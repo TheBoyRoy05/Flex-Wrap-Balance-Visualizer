@@ -1,12 +1,6 @@
 # flex-wrap: balance
 
-An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap: balance`,
-mirroring the implementation in WebCore.
-
-```bash
-npm install
-npm run dev
-```
+An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap: balance`, mirroring the implementation in [WebKit](https://github.com/WebKit/WebKit/blob/74efecb8e0d1e43dea71093f25a1aab4ec9383ff/Source/WebCore/layout/formattingContexts/flex/FlexLineBreaker.cpp). See the [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance).
 
 ## The Algorithm
 
@@ -16,7 +10,7 @@ $$\min \sum_{line} \texttt{freeSpace}[\texttt{line.start}, \texttt{line.end})^2$
 
 Where $\texttt{start}$ and $\texttt{end}$ are both indices and 
 
-$$\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \texttt{capacity} - \left((\texttt{end} - 1 - \texttt{start}) * \texttt{gap} + \sum_{i=\texttt{start}}^{\texttt{end}-1} \texttt{itemSize}[i]\right)$$
+$$\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \max\left(0,\ \texttt{capacity} - \left((\texttt{end} - 1 - \texttt{start}) * \texttt{gap} + \sum_{i=\texttt{start}}^{\texttt{end}-1} \texttt{itemSize}[i]\right)\right)$$
 
 ### Brute Force
 
@@ -32,18 +26,27 @@ Walking backwards through our items, for each start, we calculate the best end b
 
 $$\texttt{minScore}[\texttt{start}] = \min_{\texttt{end} \in [\texttt{start} + 1, \texttt{itemCount}]} \left( \texttt{freeSpace}[\texttt{start}, \texttt{end})^2 + \texttt{minScore}[\texttt{end}] \right)$$
 
+We also store 
+
 #### Second Pass
 
-Now we know the best end for $\texttt{minScore}[0]$, in our case this is {minScore[0]}. Because it is in column {bestEndForStart[0]}, our next row starts there. We then repeat this, finding the column with the lowest score and using that as our next start until we run out of items.
+Now we recursively look at the best line ends starting at $\texttt{start} = 0$ and updating it with $\texttt{start} = \text{bestEndForStart}[\texttt{start}]$ and adding it to our resulting list of line starts.
 
 ### Optimizations
 
-1. Since we calculate $\texttt{freeSpace}[\texttt{start}, \texttt{end})$ as the sum of the item sizes in the main $O(n^2)$ loop, we can precompute 
+- Since we calculate $\texttt{freeSpace}[\texttt{start}, \texttt{end})$ as the sum of the item sizes in the main $O(n^2)$ loop, we can precompute 
 
-$$\texttt{prefixSum}[i] = i * \texttt{gap} + \sum_{j=0}^{i-1} \texttt{itemSize}[j]$$
+  $$\texttt{prefixSum}[i] = i * \texttt{gap} + \sum_{j=0}^{i-1} \texttt{itemSize}[j]$$
 
-This allows us to turn an $O(n)$ addition into an $O(1)$ subtraction: 
+  This allows us to turn an $O(n)$ addition into an $O(1)$ subtraction: 
 
-$$\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \texttt{capacity} - (\texttt{prefixSum}[\texttt{end}] - \texttt{prefixSum}[\texttt{start}] - \texttt{gap})$$
+  $$\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \max\left(0,\ \texttt{capacity} - (\texttt{prefixSum}[\texttt{end}] - \texttt{prefixSum}[\texttt{start}] - \texttt{gap})\right)$$
 
-2. When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediately and mark the rest of the row as impossible since all item sizes are non-negative so we'll stay above capacity for any larger rows.
+-  When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediately and mark the rest of the row as impossible since all item sizes are non-negative so we'll stay above capacity for any larger rows.
+
+### Rules
+- At least one item is assigned to each line, even if that single item overflows the line by itself.
+- Other than the case of a single overflowing item, the sum of the item sizes does not exceed the inner main size, i.e. the capacity.
+- To tie-break, prefer adding items to earlier lines. Ex. if both [3, 2] and [2, 3] have the same score items per line, prefer 3 items in the first line.
+
+See the [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance) for exact wording.
