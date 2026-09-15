@@ -105,7 +105,9 @@
       <thead>
         <tr>
           <th class="matrix-corner matrix-corner--split">
-            <span class="corner-notation tnum">[start, end)</span>
+            <svg class="corner-diagonal" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <line x1="0" y1="0" x2="100" y2="100" />
+            </svg>
             <span class="corner-label corner-label--start">start</span>
             <span class="corner-label corner-label--end">end</span>
           </th>
@@ -220,12 +222,13 @@
     box-shadow: inset 0 0 0 1.5px var(--color-accent);
   }
 
-  /* Row minimum's real treatment, echoed in the legend: a 1px neutral hairline
-     ring, deliberately thinner and dimmer than the accent ring above — same
-     border-vs-border contrast the matrix cells use, not a different shape. */
+  /* Row minimum's real treatment, echoed in the legend: a 1px neutral ring in
+     the secondary-text color, clearly visible against black but deliberately
+     thinner than the 1.5px accent ring above — weight and color both separate
+     the two states, not color alone. */
   .legend-swatch--rowmin {
     background: var(--color-surface);
-    box-shadow: inset 0 0 0 1px var(--color-hairline);
+    box-shadow: inset 0 0 0 1px var(--color-text-secondary);
   }
 
   .legend-swatch--invalid {
@@ -236,14 +239,20 @@
 
   /* Overflow legend glyph: same infinity mark used inline on overflowing cells,
      so the legend and the cell content read as the same symbol, not a color key.
-     Full opacity: this glyph carries meaning (disqualified line), never faded. */
+     The tint background matches the overflowing cell's own background, so the
+     swatch reads as "disqualified" at a glance, not just via the glyph color.
+     Glyph itself stays full opacity: it carries meaning (disqualified line),
+     never faded. */
   .legend-mark--overflow {
-    display: inline-block;
-    width: auto;
-    height: auto;
-    background: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--space-16);
+    height: var(--space-16);
+    border-radius: var(--radius-6);
+    background: var(--color-overflow-tint);
     box-shadow: none;
-    font-size: var(--text-15);
+    font-size: var(--text-13);
     color: var(--color-overflow);
   }
 
@@ -287,25 +296,29 @@
   /* Split-corner convention: one hairline diagonal from corner to corner does
      the labeling job the two chip strips used to do. "start" sits in the
      lower-left triangle (reads against the row axis below it), "end" in the
-     upper-right (reads against the column axis beside it). The diagonal is
-     drawn as a 1px gradient seam, same weight and color as the table's other
-     hairlines — structure, not meaning, so it stays monochrome. */
+     upper-right (reads against the column axis beside it). The diagonal is an
+     inline SVG line, not a gradient: a gradient seam fades toward both ends
+     and barely registers, where the table's other hairlines are crisp 1px
+     rules. `preserveAspectRatio="none"` stretches the 0..100 viewBox to fill
+     the cell's actual box, so the line always lands on the real corners
+     whatever the cell's width or height. */
   .matrix-corner--split {
     position: relative;
-    height: var(--space-32);
-    background:
-      linear-gradient(to top left, transparent calc(50% - 0.5px), var(--color-hairline) 50%, transparent calc(50% + 0.5px)),
-      var(--color-surface);
+    height: var(--space-48);
+    background: var(--color-surface);
   }
 
-  .corner-notation {
+  .corner-diagonal {
     position: absolute;
-    top: var(--space-4);
-    left: var(--space-8);
-    font-size: var(--text-13);
-    font-weight: 400;
-    color: var(--color-text-secondary);
-    opacity: 0.55;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .corner-diagonal line {
+    stroke: var(--color-hairline);
+    stroke-width: 1px;
+    vector-effect: non-scaling-stroke;
   }
 
   .corner-label {
@@ -313,16 +326,15 @@
     font-size: var(--text-13);
     font-weight: 500;
     color: var(--color-text-secondary);
-    opacity: 0.75;
   }
 
   .corner-label--start {
-    bottom: var(--space-4);
+    bottom: var(--space-8);
     left: var(--space-8);
   }
 
   .corner-label--end {
-    top: var(--space-4);
+    top: var(--space-8);
     right: var(--space-8);
   }
 
@@ -392,12 +404,14 @@
     color: var(--color-overflow);
   }
 
-  /* Row minimum: a structural fact true of every row, so it gets the plain
-     hairline treatment — a 1px inset border, same color as the table's other
-     hairlines. Deliberately lighter in both color and weight than the accent
-     ring below, so a row minimum off the chosen path never reads as "picked". */
+  /* Row minimum: a structural fact true of every row, so every row's minimum
+     must be readable at a glance — the hairline token was too close to black
+     to do that. Secondary-text gives a neutral ring with real contrast, while
+     staying at 1px so weight (not just color) keeps it subordinate to the
+     1.5px accent ring below; a row minimum off the chosen path never reads
+     as "picked". */
   .matrix-cell--rowmin {
-    box-shadow: inset 0 0 0 1px var(--color-hairline);
+    box-shadow: inset 0 0 0 1px var(--color-text-secondary);
   }
 
   /* The one accent on this page: the row-minimum cells that also lie on the
@@ -423,12 +437,12 @@
      as a clean accent pick. This rule sits after --chosen in source order so its
      background/color win the cascade on cells carrying both classes. */
   .matrix-cell--overflow {
-    background: color-mix(in srgb, var(--color-overflow) 6%, var(--color-bg));
+    background: var(--color-overflow-tint);
   }
 
   .matrix-cell--overflow.matrix-cell--chosen,
   .matrix-cell--overflow.matrix-cell--rowmin {
-    background: color-mix(in srgb, var(--color-overflow) 12%, var(--color-bg));
+    background: var(--color-overflow-tint);
     color: var(--color-overflow);
     box-shadow: inset 0 0 0 1.5px var(--color-overflow);
   }

@@ -73,6 +73,7 @@ branch. `color-scheme: dark` is set once in `:root`.
 | `--color-accent` | #0a84ff | accent |
 | `--color-accent-tint` | rgba(10, 132, 255, 0.16) | accent tint |
 | `--color-overflow` | #ff453a | overflow / error red |
+| `--color-overflow-tint` | rgba(255, 69, 58, 0.18) | overflow cell / legend swatch background |
 
 ## Widths
 
