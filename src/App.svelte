@@ -9,7 +9,7 @@
   // the matrix can highlight it. Undefined once the event list is empty (no items) or
   // the animation is at the empty/reset state (index -1, nothing evaluated yet).
   const currentCellEvent = $derived(balanceState.cellEvents[balanceState.clampedCellStep]);
-  const activeStart = $derived(currentCellEvent?.start);
+  const activeStart = $derived(currentCellEvent?.kind !== 'traceback' ? currentCellEvent?.start : undefined);
 </script>
 
 <main class="page">

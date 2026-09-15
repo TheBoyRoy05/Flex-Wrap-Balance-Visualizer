@@ -5,7 +5,7 @@
   // `balanceState.cellEvents` already carries that real order, so stepping through it in
   // sequence is stepping through the algorithm's own execution, not a story imposed after.
   import { balanceState } from './state.svelte';
-  import type { CellEvaluateEvent } from './balance';
+  import type { CellEvaluateEvent, TracebackStepEvent } from './balance';
   import { prefersReducedMotion } from 'svelte/motion';
 
   const events = $derived(balanceState.cellEvents);
@@ -84,6 +84,7 @@
 
   const evalEvent = $derived(event?.kind === 'evaluate' ? (event as CellEvaluateEvent) : undefined);
   const settleEvent = $derived(event?.kind === 'settle' ? event : undefined);
+  const tracebackEvent = $derived(event?.kind === 'traceback' ? (event as TracebackStepEvent) : undefined);
 </script>
 
 <div class="stepper">
@@ -130,6 +131,15 @@
         memo[<strong>{settleEvent.start}</strong>] &larr; <strong>{fmt(settleEvent.settledValue)}</strong>
         &middot; now readable by rows &lt; {settleEvent.start}
       </p>
+    {:else if tracebackEvent}
+      <p class="stepper-headline tnum">
+        selecting link <strong>{tracebackEvent.start}</strong> &rarr; <strong>{tracebackEvent.end}</strong>
+      </p>
+      <div class="stepper-eval tnum">
+        <span class="stepper-eval-range">[{tracebackEvent.start}, {tracebackEvent.end})</span>
+        <span class="stepper-eval-items">{itemsLabel(tracebackEvent.start, tracebackEvent.end)}</span>
+        <span class="stepper-eval-tag">on chosen path</span>
+      </div>
     {:else}
       <p class="stepper-headline tnum">matrix empty &middot; memo[n] = 0</p>
     {/if}

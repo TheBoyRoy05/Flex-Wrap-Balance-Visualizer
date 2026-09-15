@@ -282,7 +282,20 @@ export interface CellSettleEvent {
   settledValue: number;
 }
 
-export type CellEvent = CellEvaluateEvent | CellSettleEvent;
+/** Fired once per link of the reconstructed path, during a second, backward pass that
+ *  runs only after every row has settled. The forward fill (evaluate/settle events)
+ *  computes each row's own best end; it never decides which rows lie on the final path.
+ *  That decision is this separate walk: start at 0, follow `bestEnd[start]` to the next
+ *  start, and repeat until reaching n. One event per link followed, in the order the
+ *  walk actually visits them (0 first, n last) — the order a viewer should see the
+ *  chosen path's cells turn blue, one at a time. */
+export interface TracebackStepEvent {
+  kind: 'traceback';
+  start: number;
+  end: number;
+}
+
+export type CellEvent = CellEvaluateEvent | CellSettleEvent | TracebackStepEvent;
 
 /** Flat, cell-granular replay of the suffix DP: one `evaluate` event per candidate
  *  the algorithm actually tests, one `settle` event per row once that row's
@@ -324,6 +337,7 @@ export function traceCellEvents(sizes: number[], capacity: number, gap: number):
     return [
       { kind: 'evaluate', start: 0, end: n, lineScore: total, memoIndex: n, memoValue: 0, total, isChosen: true },
       { kind: 'settle', start: 0, settledValue: total },
+      { kind: 'traceback', start: 0, end: n },
     ];
   }
 
@@ -391,6 +405,17 @@ export function traceCellEvents(sizes: number[], capacity: number, gap: number):
       if (!ev.isProbe) ev.isChosen = ev.end === bestEnd[start];
     }
     events.push({ kind: 'settle', start, settledValue: minScores[start] });
+  }
+
+  // Second, backward pass: reconstruct the chosen path from bestEnd, starting at 0.
+  // Runs only after every row above has already settled — mirrors the forward DP's
+  // own dependency order (a row's bestEnd is only meaningful once its comparisons
+  // are done), and keeps "which cells are chosen" a decision made strictly after
+  // "what is each row's own minimum", never simultaneously with it.
+  for (let start = 0; start < n; ) {
+    const end = bestEnd[start];
+    events.push({ kind: 'traceback', start, end });
+    start = end;
   }
 
   return events;

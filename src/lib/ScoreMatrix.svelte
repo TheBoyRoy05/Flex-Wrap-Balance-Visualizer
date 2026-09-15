@@ -49,28 +49,16 @@
   }
 
   // The chosen line segments are [prevBreak, break) for each entry in `breaks`.
-  // Store them as "start,end" keys in a Set for O(1) cell lookup in the template.
-  // Every one of these is also a row minimum (see isRowMinimum below): the path
-  // is built by following bestEnd from 0, so chosenCells is always a subset of
-  // "the cell each row's minimum lands on" — never a competing, unrelated set.
-  const chosenCells: Set<string> = $derived.by(() => {
-    const cells = new Set<string>();
-    let start = 0;
-    for (const end of breaks) {
-      cells.add(`${start},${end}`);
-      start = end;
-    }
-    return cells;
-  });
+  // Not used directly for cell coloring — see `chosenCellsAtStep` below, which is
+  // the same set but gated on whether the traceback has actually walked that far
+  // yet. Kept here for `totalScore`, which reads the final path regardless of
+  // animation progress (the summary line is a fact about the algorithm's result,
+  // not about what the viewer has stepped through).
 
   const totalScore = $derived(breaks.reduce((sum, end, i) => {
     const start = i === 0 ? 0 : breaks[i - 1];
     return sum + (score[start]?.[end] ?? 0);
   }, 0));
-
-  function isChosen(start: number, end: number): boolean {
-    return chosenCells.has(`${start},${end}`);
-  }
 
   // bestEnd[start] is, by definition, the end that achieves minScores[start] —
   // the row's minimum total. True for every row, whether or not that row lies
@@ -87,6 +75,24 @@
   // the whole picture from the events-so-far, never patch it incrementally.
   const events = $derived(balanceState.cellEvents);
   const cellStep = $derived(balanceState.clampedCellStep);
+
+  // Cells the backward traceback has actually walked as of this step — never the
+  // full static path. Phase two (traceback events) runs strictly after every
+  // evaluate/settle event, so this set is empty throughout the whole forward
+  // fill: nothing may read as "chosen" before the walk that chooses it has run.
+  const chosenCellsAtStep: Set<string> = $derived.by(() => {
+    const cells = new Set<string>();
+    for (let i = 0; i <= cellStep; i++) {
+      const ev = events[i];
+      if (ev?.kind === 'traceback') cells.add(`${ev.start},${ev.end}`);
+    }
+    return cells;
+  });
+
+  function isChosen(start: number, end: number): boolean {
+    return chosenCellsAtStep.has(`${start},${end}`);
+  }
+
 
   interface RevealedCell {
     lineScore: number;
@@ -392,13 +398,15 @@
     box-shadow: inset 0 0 0 1.5px var(--color-accent);
   }
 
-  /* Row minimum's real treatment, echoed in the legend: a 1px neutral ring in
-     the secondary-text color, clearly visible against black but deliberately
-     thinner than the 1.5px accent ring above — weight and color both separate
-     the two states, not color alone. */
+  /* Row minimum's real treatment, echoed in the legend: a white box using the
+     primary text token for its border — deliberately not the accent (that's
+     reserved for the chosen path, decided later by the traceback) and not the
+     secondary-grey hairline (too close to the void/hairline treatment). Weight
+     (1px, vs. the 1.5px accent ring below) as well as color separates the two
+     states, so a row minimum off the chosen path never reads as "picked". */
   .legend-swatch--rowmin {
     background: var(--color-surface);
-    box-shadow: inset 0 0 0 1px var(--color-text-secondary);
+    box-shadow: inset 0 0 0 1px var(--color-text);
   }
 
   /* Structurally void (end <= start): quiet neutral fill, no accent, no red — this
@@ -751,14 +759,16 @@
     color: var(--color-accent);
   }
 
-  /* Row minimum: a structural fact true of every row, so every row's minimum
-     must be readable at a glance — the hairline token was too close to black
-     to do that. Secondary-text gives a neutral ring with real contrast, while
-     staying at 1px so weight (not just color) keeps it subordinate to the
-     1.5px accent ring below; a row minimum off the chosen path never reads
-     as "picked". */
+  /* Row minimum: a structural fact true of every row, settled by the forward
+     fill alone — this ring must never depend on whether the traceback has run.
+     White box, primary-text-token border: distinct from the accent (reserved
+     for the chosen path, decided later) and from the secondary-grey hairline
+     (too close to the void treatment). 1px weight keeps it subordinate to the
+     1.5px accent ring below once a row minimum also becomes chosen; a row
+     minimum off the chosen path (row 1 at the default input) stays this way
+     forever, never upgraded. */
   .matrix-cell--rowmin {
-    box-shadow: inset 0 0 0 1px var(--color-text-secondary);
+    box-shadow: inset 0 0 0 1px var(--color-text);
   }
 
   /* The one accent on this page: the row-minimum cells that also lie on the
