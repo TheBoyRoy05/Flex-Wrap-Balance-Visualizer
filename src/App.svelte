@@ -3,7 +3,6 @@
   import LinePreview from './lib/LinePreview.svelte';
   import ScoreMatrix from './lib/ScoreMatrix.svelte';
   import DpStepper from './lib/DpStepper.svelte';
-  import AlgorithmExplainer from './lib/AlgorithmExplainer.svelte';
   import { balanceState } from './lib/state.svelte';
 
   // The row the stepper is currently deciding, read out of the current cell event so
@@ -17,6 +16,14 @@
   <header class="measure header">
     <span class="eyebrow">flex-wrap: balance</span>
     <h1>Score Matrix Visualizer</h1>
+    <a
+      class="algorithm-link"
+      href="https://github.com/TheBoyRoy05/Flex-Wrap-Balance-Visualizer#the-algorithm"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      The Algorithm ↗
+    </a>
   </header>
 
   <div class="measure">
@@ -31,10 +38,6 @@
     <ScoreMatrix {activeStart}>
       <DpStepper />
     </ScoreMatrix>
-  </div>
-
-  <div class="measure">
-    <AlgorithmExplainer />
   </div>
 </main>
 
@@ -58,5 +61,30 @@
     font-size: var(--text-13);
     font-weight: 500;
     color: var(--color-accent);
+  }
+
+  .algorithm-link {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    height: var(--control-height);
+    padding: 0 var(--space-16);
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-8);
+    font-size: var(--text-15);
+    font-weight: 500;
+    color: var(--color-accent);
+    text-decoration: none;
+    transition: border-color 200ms ease-out, box-shadow 200ms ease-out;
+  }
+
+  .algorithm-link:hover {
+    border-color: var(--color-accent);
+  }
+
+  .algorithm-link:focus-visible {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--accent-focus-ring);
   }
 </style>

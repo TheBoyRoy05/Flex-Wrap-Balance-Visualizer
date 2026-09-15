@@ -218,7 +218,7 @@
   <div class="legend">
     <span class="legend-item">
       <span class="legend-swatch legend-swatch--chosen"></span>
-      chosen
+      Chosen
     </span>
     <span class="legend-item">
       <span class="legend-swatch legend-swatch--rowmin"></span>

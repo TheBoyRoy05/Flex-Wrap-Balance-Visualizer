@@ -1,8 +1,8 @@
 # flex-wrap: balance
 
-An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap: balance`, mirroring the implementation in [WebKit](https://github.com/WebKit/WebKit/blob/74efecb8e0d1e43dea71093f25a1aab4ec9383ff/Source/WebCore/layout/formattingContexts/flex/FlexLineBreaker.cpp). See the [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance).
+An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap: balance`, mirroring the implementation in [WebKit](https://github.com/WebKit/WebKit/blob/74efecb8e0d1e43dea71093f25a1aab4ec9383ff/Source/WebCore/layout/formattingContexts/flex/FlexLineBreaker.cpp). Background: [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance).
 
-## The Algorithm
+## The Core Algorithm
 
 The goal of balancing items is to homogenize the free space. To achieve this, we aim to minimize the following "score":
 
@@ -44,11 +44,8 @@ With this, we have found the best line breaks which minimzes the sum of the squa
 
   $$\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \max\left(0,\ \texttt{capacity} - (\texttt{prefixSum}[\texttt{end}] - \texttt{prefixSum}[\texttt{start}] - \texttt{gap})\right)$$
 
--  When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediately and mark the rest of the row as impossible since all item sizes are non-negative so we'll stay above capacity for any larger rows.
+- When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediately and mark the rest of the row as impossible since all item sizes are non-negative so we'll stay above capacity for any larger rows.
 
-### Rules
-- At least one item is assigned to each line, even if that single item overflows the line by itself.
-- Other than the case of a single overflowing item, the sum of the item sizes does not exceed the inner main size, i.e. the capacity.
-- To tie-break, prefer adding items to earlier lines. Ex. if both [3, 2] and [2, 3] have the same score items per line, prefer 3 items in the first line.
+  With this, we can further decrease our time complexity to $O(n * L)$ where $L$ is the average line length. In the typical case, $ L << n$ and hence, we can typically achieve near $O(n)$, down from the $O(2^n)$ of brute force. Incredible!
 
-See the [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance) for exact wording.
+See the [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance) for more details.
