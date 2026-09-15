@@ -217,20 +217,16 @@
 <div class="matrix-panel">
   <div class="legend">
     <span class="legend-item">
-      <span class="legend-swatch legend-swatch--chosen"></span>
-      Chosen
-    </span>
-    <span class="legend-item">
       <span class="legend-swatch legend-swatch--rowmin"></span>
-      row min
+      Row Minimum
     </span>
     <span class="legend-item">
-      <span class="legend-swatch legend-swatch--void"></span>
-      out of range
+      <span class="legend-swatch legend-swatch--chosen"></span>
+      Best Breakpoints
     </span>
     <span class="legend-item">
       <span class="legend-mark legend-mark--overflow">&infin;</span>
-      overflows
+      Overflows
     </span>
     <span class="legend-item legend-item--key" aria-label="cell total equals free squared plus minScore at end">
       <code class="legend-key-code">total = free² + minScore[end]</code>

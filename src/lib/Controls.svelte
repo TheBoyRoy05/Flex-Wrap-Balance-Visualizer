@@ -46,7 +46,7 @@
 
 <div class="controls">
   <label class="field">
-    <span class="field-label">Item sizes (px)</span>
+    <span class="field-label">Item Sizes (px)</span>
     <input
       type="text"
       bind:value={balanceState.sizesInput}
@@ -56,7 +56,7 @@
   </label>
 
   <label class="field">
-    <span class="field-label">Container capacity</span>
+    <span class="field-label">Container Capacity</span>
     <div class="slider-row">
       <input
         type="range"
