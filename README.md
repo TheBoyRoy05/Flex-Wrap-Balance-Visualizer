@@ -26,11 +26,13 @@ Walking backwards through our items, for each start, we calculate the best end b
 
 $$\texttt{minScore}[\texttt{start}] = \min_{\texttt{end} \in [\texttt{start} + 1, \texttt{itemCount}]} \left( \texttt{freeSpace}[\texttt{start}, \texttt{end})^2 + \texttt{minScore}[\texttt{end}] \right)$$
 
-We also store 
+We also store $\text{bestEndForStart}[\texttt{start}]$ as the last $\texttt{end}$ which achieves $\texttt{minScore}[\texttt{start}]$. We store the _last_ $\texttt{end}$ rather than any other to serve as the tie-breaker specified by the [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance).
 
 #### Second Pass
 
 Now we recursively look at the best line ends starting at $\texttt{start} = 0$ and updating it with $\texttt{start} = \text{bestEndForStart}[\texttt{start}]$ and adding it to our resulting list of line starts.
+
+With this, we have found the best line breaks which minimzes the sum of the squares of free space, hence achieving a balanced solution.
 
 ### Optimizations
 
