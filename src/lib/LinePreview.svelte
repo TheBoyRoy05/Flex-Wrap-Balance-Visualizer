@@ -224,6 +224,8 @@
     flex: 0 0 auto;
     border-radius: var(--radius-6);
     background: var(--color-surface);
+    border: 1px solid var(--color-hairline);
+    box-sizing: border-box;
     overflow: hidden;
   }
 

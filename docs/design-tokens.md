@@ -60,25 +60,35 @@ a value in that range instead of down to the nearest spacing step.
 
 ## Color
 
+Dark is the only mode — there is no light variant and no `prefers-color-scheme`
+branch. `color-scheme: dark` is set once in `:root`.
+
 | Token | Value | Role |
 |---|---|---|
-| `--color-bg` | #ffffff | page background |
-| `--color-surface` | #fafafa | raised surface |
-| `--color-text` | #1d1d1f | primary text |
-| `--color-text-secondary` | #6e6e73 | secondary text |
-| `--color-hairline` | #d2d2d7 | hairline / border |
-| `--color-accent` | #0071e3 | accent |
-| `--color-accent-tint` | rgba(0, 113, 227, 0.08) | accent tint |
-| `--color-overflow` | #d70015 | overflow / error red |
+| `--color-bg` | #000000 | page background |
+| `--color-surface` | #161617 | raised surface |
+| `--color-text` | #f5f5f7 | primary text |
+| `--color-text-secondary` | #86868b | secondary text |
+| `--color-hairline` | #38383a | hairline / border |
+| `--color-accent` | #0a84ff | accent |
+| `--color-accent-tint` | rgba(10, 132, 255, 0.16) | accent tint |
+| `--color-overflow` | #ff453a | overflow / error red |
 
 ## Widths
 
 | Token | Value | Applies to |
 |---|---|---|
-| `--measure-prose` | 720px | title, subhead, input row |
-| `--measure-data` | 1120px | preview panels, matrix |
+| `--measure-data` | 1120px | the whole page — one shared content edge |
+| `--measure-text` | 640px | internal readability cap on a text line only (e.g. the subhead); never a container width |
 | `--gutter` | 24px | page gutter, ≥768px |
 | `--gutter-narrow` | 16px | page gutter, <768px |
+
+The page has a single content measure. Every top-level section — header,
+controls, preview panels, matrix, footer — sits in the same `.measure`
+container at `--measure-data`, so the page has one consistent left/right edge.
+`--measure-text` is not a second container tier: it only caps the width of a
+line of prose *inside* a `.measure` container when an unconstrained line would
+run past a comfortable reading width.
 
 ## Rule
 

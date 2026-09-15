@@ -87,7 +87,7 @@
       chosen
     </span>
     <span class="legend-item">
-      <span class="legend-mark legend-mark--rowmin"></span>
+      <span class="legend-swatch legend-swatch--rowmin"></span>
       row min
     </span>
     <span class="legend-item">
@@ -148,9 +148,6 @@
                     {/if}
                   </div>
                   <div class="matrix-cell-breakdown tnum">{cellScore} + {minScores[end]}</div>
-                  {#if chosen}
-                    <div class="matrix-cell-next tnum">&darr; {end}</div>
-                  {/if}
                 {:else if overflow}
                   <div class="matrix-cell-inf">&infin;</div>
                 {/if}
@@ -223,19 +220,12 @@
     box-shadow: inset 0 0 0 1.5px var(--color-accent);
   }
 
-  /* Row minimum's quiet mark, echoed in the legend: a rule underneath, same
-     weight as the cell itself carries — no fill, no second hue. */
-  .legend-mark {
-    display: inline-block;
-    width: var(--space-8);
-    height: var(--space-8);
-    border-radius: var(--radius-6);
+  /* Row minimum's real treatment, echoed in the legend: a 1px neutral hairline
+     ring, deliberately thinner and dimmer than the accent ring above — same
+     border-vs-border contrast the matrix cells use, not a different shape. */
+  .legend-swatch--rowmin {
     background: var(--color-surface);
     box-shadow: inset 0 0 0 1px var(--color-hairline);
-  }
-
-  .legend-mark--rowmin {
-    box-shadow: inset 0 -2px 0 0 var(--color-text), inset 0 0 0 1px var(--color-hairline);
   }
 
   .legend-swatch--invalid {
@@ -245,7 +235,8 @@
   }
 
   /* Overflow legend glyph: same infinity mark used inline on overflowing cells,
-     so the legend and the cell content read as the same symbol, not a color key. */
+     so the legend and the cell content read as the same symbol, not a color key.
+     Full opacity: this glyph carries meaning (disqualified line), never faded. */
   .legend-mark--overflow {
     display: inline-block;
     width: auto;
@@ -254,7 +245,6 @@
     box-shadow: none;
     font-size: var(--text-15);
     color: var(--color-overflow);
-    opacity: 0.85;
   }
 
   .matrix-scroll {
@@ -394,39 +384,32 @@
      it as infinite cost (when it's not eligible) or a waived 0 (when it is, as
      with a lone over-capacity item) — either way, never taken as competitive.
      The red tint and infinity glyph make that cost literal; full styling below,
-     after --chosen, so it wins the cascade on cells that are both. */
+     after --chosen, so it wins the cascade on cells that are both. Full opacity:
+     this glyph says "disqualified", meaning that must never read as faded. */
 
   .matrix-cell-inf {
     font-size: var(--text-15);
     color: var(--color-overflow);
-    opacity: 0.55;
   }
 
-  /* Row minimum: a structural fact true of every row, so it gets a quiet mark,
-     not a hue. A single rule under the total (same weight as bold text, not a
-     fill or a border box) says "this is minScores[start] for this row" without
-     competing with the accent reserved for the chosen path below. */
-  .matrix-cell--rowmin .matrix-cell-total {
-    font-weight: 600;
-    box-shadow: inset 0 -2px 0 0 var(--color-text);
-    padding-bottom: var(--space-4);
+  /* Row minimum: a structural fact true of every row, so it gets the plain
+     hairline treatment — a 1px inset border, same color as the table's other
+     hairlines. Deliberately lighter in both color and weight than the accent
+     ring below, so a row minimum off the chosen path never reads as "picked". */
+  .matrix-cell--rowmin {
+    box-shadow: inset 0 0 0 1px var(--color-hairline);
   }
 
   /* The one accent on this page: the row-minimum cells that also lie on the
      chosen path. Every chosen cell is a row minimum (see isChosen/isRowMinimum
-     above), so this always layers on top of, never instead of, the rule above. */
+     above), so this box-shadow overrides, rather than stacks with, the hairline
+     ring above — a heavier 1.5px accent-colored border reads as categorically
+     different from the 1px neutral hairline, not just a recolor of it. */
   .matrix-cell--chosen {
     background: var(--color-accent-tint);
     color: var(--color-accent);
     font-weight: 600;
     box-shadow: inset 0 0 0 1.5px var(--color-accent);
-  }
-
-  .matrix-cell--chosen .matrix-cell-total {
-    /* Accent cells drop the rowmin rule in favor of the accent frame itself —
-       the box-shadow above already says "chosen"; a second rule would be a
-       competing mark on the one cell that most needs to read as singular. */
-    box-shadow: none;
   }
 
   .matrix-cell--chosen .matrix-cell-breakdown {
@@ -457,22 +440,12 @@
 
   /* Inline glyph on an eligible-but-overflowing cell (single item over capacity):
      the total is genuinely 0 by the algorithm, but this mark says that 0 was
-     waived, not earned — so it can never be mistaken for a perfect zero-free-space fit. */
+     waived, not earned — so it can never be mistaken for a perfect zero-free-space
+     fit. Full opacity: this is the same disqualification meaning as .matrix-cell-inf. */
   .matrix-cell-inf-inline {
     margin-left: var(--space-4);
     font-size: var(--text-13);
     color: var(--color-overflow);
-    opacity: 0.85;
-  }
-
-  /* Chaining mark: names the next row this chosen cell hands off to, so the
-     path reads as a sequence (0 -> 2 -> 4 -> 5) and not four isolated cells. */
-  .matrix-cell-next {
-    margin-top: var(--space-4);
-    font-size: var(--text-13);
-    font-weight: 500;
-    color: var(--color-accent);
-    opacity: 0.85;
   }
 
   .summary {
@@ -523,10 +496,10 @@
     color: var(--color-overflow);
   }
 
+  /* Same disqualification meaning as the matrix's infinity glyph — full opacity. */
   .summary-chip-inf {
     margin-left: var(--space-4);
     color: var(--color-overflow);
-    opacity: 0.85;
   }
 
   .summary-total {

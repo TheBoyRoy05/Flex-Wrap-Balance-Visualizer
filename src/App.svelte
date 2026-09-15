@@ -5,7 +5,7 @@
 </script>
 
 <main class="page">
-  <header class="measure-prose header">
+  <header class="measure header">
     <span class="eyebrow">flex-wrap: balance</span>
     <h1>Score matrix visualizer</h1>
     <p class="subhead">
@@ -13,19 +13,19 @@
     </p>
   </header>
 
-  <div class="measure-prose">
+  <div class="measure">
     <Controls />
   </div>
 
-  <div class="measure-data">
+  <div class="measure">
     <LinePreview />
   </div>
 
-  <div class="measure-data">
+  <div class="measure">
     <ScoreMatrix />
   </div>
 
-  <footer class="measure-prose footer">
+  <footer class="measure footer">
     Pure algorithm mirrors WebCore's <code>balancedLineBreaks</code> &mdash; see
     <code>src/lib/balance.ts</code>.
   </footer>
@@ -56,6 +56,10 @@
   .subhead {
     font-size: var(--text-15);
     color: var(--color-text-secondary);
+    /* Text measure constraint stays internal to the line itself — the header's
+       container shares the page's one content edge (.measure), but a long
+       sentence at 1120px would run past a comfortable reading width. */
+    max-width: var(--measure-text);
   }
 
   .footer {

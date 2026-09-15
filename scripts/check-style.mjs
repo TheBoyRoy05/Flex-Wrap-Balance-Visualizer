@@ -57,6 +57,23 @@ function extractHexColor(value) {
 }
 
 /**
+ * Extract function-form colors (rgba, rgb, hsl) from a value string.
+ * Returns array of {type, text} objects found in the string.
+ */
+function extractFunctionColors(value) {
+  const results = [];
+  const regex = /(rgba|rgb|hsl)\s*\([^)]*\)/g;
+  let match;
+  while ((match = regex.exec(value)) !== null) {
+    results.push({
+      type: match[1],
+      text: match[0],
+    });
+  }
+  return results;
+}
+
+/**
  * Check if a value is 0 or 0px (always allowed).
  */
 function isZeroValue(value) {
@@ -162,7 +179,7 @@ function checkSpacing(prop, value, lineNum, filePath) {
 }
 
 /**
- * Check a color value for raw hex literals (outside :root).
+ * Check a color value for raw hex and function-form color literals (outside :root).
  */
 function checkColor(value, lineNum, filePath, inRootBlock) {
   if (inRootBlock) return; // Skip colors inside :root
@@ -177,6 +194,17 @@ function checkColor(value, lineNum, filePath, inRootBlock) {
       reason: 'Use design tokens (--text, --accent, etc.) instead of raw hex',
     });
   }
+
+  const functionColors = extractFunctionColors(value);
+  functionColors.forEach(({ type, text }) => {
+    violations.push({
+      file: filePath,
+      line: lineNum,
+      text: text,
+      type: 'color',
+      reason: `Use design tokens (--text, --accent, etc.) instead of raw ${type}()`,
+    });
+  });
 }
 
 /**
