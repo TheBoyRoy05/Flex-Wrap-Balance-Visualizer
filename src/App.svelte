@@ -2,6 +2,12 @@
   import Controls from './lib/Controls.svelte';
   import LinePreview from './lib/LinePreview.svelte';
   import ScoreMatrix from './lib/ScoreMatrix.svelte';
+  import DpStepper from './lib/DpStepper.svelte';
+  import { balanceState } from './lib/state.svelte';
+
+  // The row the stepper is currently deciding, read out of the trace so the matrix
+  // can highlight it. Undefined once the trace is empty (no items).
+  const activeStart = $derived(balanceState.trace.steps[balanceState.clampedStepIndex]?.start);
 </script>
 
 <main class="page">
@@ -22,7 +28,11 @@
   </div>
 
   <div class="measure">
-    <ScoreMatrix />
+    <ScoreMatrix {activeStart} />
+  </div>
+
+  <div class="measure">
+    <DpStepper />
   </div>
 
   <footer class="measure footer">

@@ -148,6 +148,99 @@ export function balancedLineBreaks(sizes: number[], capacity: number, gap: numbe
   return { breaks, minScores, bestEnd, score, len };
 }
 
+/** One candidate end considered for the line starting at `start`, in the order the DP visits it. */
+export interface DpCandidate {
+  end: number;
+  /** score[start][end]: this line's own squared free space. */
+  lineScore: number;
+  /** minScores[end]: best achievable total for everything after this candidate's end. */
+  restScore: number;
+  /** lineScore + restScore: what this candidate actually costs, start to finish. */
+  total: number;
+  /** True only for the candidate the DP actually kept as bestEnd[start] (its own <= tie-break
+   *  favors the last candidate matching the minimum, giving the earliest line the most items). */
+  isChosen: boolean;
+}
+
+/** One row of the suffix DP: every candidate end for a given `start`, and which one won. */
+export interface DpStep {
+  start: number;
+  candidates: DpCandidate[];
+  /** bestEnd[start] once every candidate has been compared. */
+  chosenEnd: number;
+  /** minScores[start] once every candidate has been compared. */
+  chosenTotal: number;
+}
+
+export interface TraceResult extends BalanceResult {
+  /** DP rows in the order the algorithm computes them: start = n-1 down to 0. */
+  steps: DpStep[];
+}
+
+/** Same suffix DP as balancedLineBreaks, but also records every candidate it compared and why
+ *  it won or lost, one DpStep per `start`, in the order the algorithm actually runs (n-1 down to 0).
+ *  Kept separate from balancedLineBreaks so that function's behavior/signature never changes. */
+export function traceBalancedLineBreaks(sizes: number[], capacity: number, gap: number): TraceResult {
+  const n = sizes.length;
+  if (!n)
+    return { breaks: [], minScores: [], bestEnd: [], score: [], len: [], steps: [] };
+
+  const { score, len, length } = buildMatrix(sizes, capacity, gap);
+
+  if (length(0, n) <= capacity) {
+    const minScores: (number | null)[] = new Array<number | null>(n + 1).fill(null);
+    minScores[0] = score[0][n];
+    const step: DpStep = {
+      start: 0,
+      candidates: [{ end: n, lineScore: score[0][n] as number, restScore: 0, total: score[0][n] as number, isChosen: true }],
+      chosenEnd: n,
+      chosenTotal: score[0][n] as number,
+    };
+    return { breaks: [n], minScores, bestEnd: [n], score, len, steps: [step] };
+  }
+
+  const lastFittingEnd = new Array<number>(n).fill(0);
+  let end = 1;
+  for (let start = 0; start < n; start++) {
+    end = Math.max(end, start + 1);
+    while (end < n && length(start, end + 1) <= capacity) end++;
+    lastFittingEnd[start] = end;
+  }
+
+  const INF = Number.POSITIVE_INFINITY;
+  const minScores = new Array<number>(n + 1).fill(INF);
+  minScores[n] = 0;
+  const bestEnd = new Array<number>(n).fill(0);
+  const steps: DpStep[] = [];
+
+  for (let start = n - 1; start >= 0; start--) {
+    const candidates: DpCandidate[] = [];
+    for (let e = start + 1; e <= lastFittingEnd[start]; e++) {
+      const lineScore = score[start][e] as number;
+      const restScore = minScores[e];
+      const total = lineScore + restScore;
+      if (total <= minScores[start]) {
+        minScores[start] = total;
+        bestEnd[start] = e;
+      }
+      candidates.push({ end: e, lineScore, restScore, total, isChosen: false });
+    }
+    // Only the candidate matching bestEnd[start] is the one the DP actually kept, even
+    // if an earlier candidate tied its total (the <= tie-break overwrites on ties).
+    for (const c of candidates) c.isChosen = c.end === bestEnd[start];
+    steps.push({ start, candidates, chosenEnd: bestEnd[start], chosenTotal: minScores[start] });
+  }
+
+  const breaks: number[] = [];
+  for (let start = 0; start < n; ) {
+    const e = bestEnd[start];
+    breaks.push(e);
+    start = e;
+  }
+
+  return { breaks, minScores, bestEnd, score, len, steps };
+}
+
 /** Parse "40, 40, 100" into [40, 40, 100], dropping blanks and non-numbers. */
 export function parseSizes(input: string): number[] {
   return input

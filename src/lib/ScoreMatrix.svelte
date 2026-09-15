@@ -76,6 +76,20 @@
   function isRowMinimum(start: number, end: number): boolean {
     return bestEnd[start] === end;
   }
+
+  // The row a reader is looking at is the same number the header row shows further
+  // right, in the column of the same index — minScores does both jobs (produced by
+  // its own row, consumed by earlier rows as `minScores[end]`), but until now only
+  // the consumed half had a column. This is the produced half: one trailing cell
+  // per row, equal to that row's own minimum.
+  function settledTotal(start: number): number | null {
+    return minScores[start] ?? null;
+  }
+
+  // Which row the stepper is currently deciding, so the matrix can highlight it —
+  // the two views read as connected, not two unrelated panels. Undefined while no
+  // trace exists (n === 0).
+  let { activeStart = undefined }: { activeStart?: number } = $props();
 </script>
 
 
@@ -114,17 +128,19 @@
           {#each cols as end (end)}
             <th class="matrix-head tnum">{end}</th>
           {/each}
+          <th class="matrix-head matrix-head--settled">settles at</th>
         </tr>
         <tr>
-          <th class="matrix-corner matrix-corner--sub tnum">minScores</th>
+          <th class="matrix-corner matrix-corner--sub tnum">best from here</th>
           {#each cols as end (end)}
             <th class="matrix-minscore tnum">{minScores[end] ?? '\u2014'}</th>
           {/each}
+          <th class="matrix-minscore matrix-minscore--settled"></th>
         </tr>
       </thead>
       <tbody>
         {#each rows as start (start)}
-          <tr>
+          <tr class:matrix-row--active={start === activeStart}>
             <th class="matrix-row-head tnum">{start}</th>
             {#each cols as end (end)}
               {@const eligible = isEligible(start, end)}
@@ -149,12 +165,17 @@
                       <span class="matrix-cell-inf-inline" title="overflow: length exceeds capacity">&infin;</span>
                     {/if}
                   </div>
-                  <div class="matrix-cell-breakdown tnum">{cellScore} + {minScores[end]}</div>
+                  <div class="matrix-cell-breakdown tnum">
+                    <span title="this line's own squared free space">{cellScore}</span>
+                    +
+                    <span title="best total for everything after it">{minScores[end]}</span>
+                  </div>
                 {:else if overflow}
                   <div class="matrix-cell-inf">&infin;</div>
                 {/if}
               </td>
             {/each}
+            <td class="matrix-cell matrix-cell--settled tnum">{settledTotal(start) ?? '\u2014'}</td>
           </tr>
         {/each}
       </tbody>
@@ -360,6 +381,14 @@
     border-bottom: 1px solid var(--color-hairline);
   }
 
+  /* Trailing column's header cells stay blank/neutral — "settles at" already
+     labels the column once, up in .matrix-head--settled; repeating a value in
+     both header rows of the same column would just be noise. */
+  .matrix-head--settled,
+  .matrix-minscore--settled {
+    border-left: 1px solid var(--color-hairline);
+  }
+
   .matrix-row-head {
     left: 0;
     z-index: 1;
@@ -367,10 +396,35 @@
     border-right: 1px solid var(--color-hairline);
   }
 
+  /* The row the stepper is currently deciding — ties the matrix to the stepper
+     panel below it so the two read as one connected view, not two side by side. */
+  .matrix-row--active .matrix-row-head {
+    color: var(--color-accent);
+  }
+
+  .matrix-row--active .matrix-cell,
+  .matrix-row--active .matrix-cell--settled {
+    background: var(--color-accent-tint);
+  }
+
+  .matrix-row--active .matrix-cell--chosen,
+  .matrix-row--active .matrix-cell--overflow {
+    background: var(--color-accent-tint);
+  }
+
   .matrix-cell {
     padding: var(--space-8) var(--space-12);
     color: var(--color-text);
     border-top: 1px solid var(--color-hairline);
+  }
+
+  /* Produced value: the same number the header row shows in the column of the
+     same index, now attached to the row that actually settles on it. Left
+     hairline separates it from the [start, end) grid it summarizes. */
+  .matrix-cell--settled {
+    border-left: 1px solid var(--color-hairline);
+    font-weight: 600;
+    color: var(--color-text);
   }
 
   .matrix-cell-total {
