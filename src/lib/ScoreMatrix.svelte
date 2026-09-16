@@ -592,6 +592,10 @@
       <span class="legend-mark legend-mark--overflow">&infin;</span>
       Overflows
     </span>
+    <span class="legend-item legend-item--axes">
+      <span>start<span class="axis-word">&nbsp;index</span> &darr;</span>
+      <span>end<span class="axis-word">&nbsp;index</span> &rarr;</span>
+    </span>
     <span class="legend-item legend-item--key" aria-label="cell total equals free squared plus minScore at end">
       <code class="legend-key-code">total = free² + minScore[end]</code>
     </span>
@@ -624,31 +628,12 @@
                 <svg class="corner-diagonal" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                   <line x1="0" y1="0" x2="100" y2="100" />
                 </svg>
-                <span class="corner-label corner-label--start">start</span>
-                <span class="corner-label corner-label--end">end</span>
               </div>
             </th>
             {#each cols as end (end)}
               <th class="matrix-head tnum" style={`height: ${headRowOneHeight}`}>{end}</th>
             {/each}
           </tr>
-          <!-- Narrow-only spanning label row: the same `minScore[end]` label
-               the sticky sub-corner cell holds at >=768px, promoted to its own
-               full-width row immediately above the memo values below 768px.
-               Reads `isNarrow` (the same script state the width probe and the
-               summary swap already key off, mirroring the CSS's own 767px
-               breakpoint) rather than existing purely as a CSS display swap,
-               so the label's presence here and its absence from the memo
-               row's own leading cell below can never drift out of sync with
-               each other or with which layout is actually showing. `colspan`
-               spans the sticky index column plus every candidate column, so
-               the label reads as captioning the whole row of values beneath
-               it, not as a stray heading floating above just the candidates. -->
-          {#if isNarrow}
-            <tr class="matrix-memo-label-row">
-              <th class="matrix-memo-label tnum" colspan={n + 1} style={`height: ${labelRowHeight}`}><code>minScore[end]</code></th>
-            </tr>
-          {/if}
           <tr class="matrix-memo-row" style={`height: ${headRowTwoHeight}`}>
             <th class="matrix-corner--sub matrix-sticky-col tnum" style={`height: ${headRowTwoHeight}`}>
               <!-- Desktop keeps the label beside its values, exactly as
@@ -807,19 +792,6 @@
           <span>minScore</span>
           <span class="matrix-summary-head--bestend-label">bestEnd</span>
         </div>
-        <!-- A second, blank header box reserving the exact height the
-             table's own two narrow-only header rows add below this point —
-             the spanning `minScore[end]` label row plus the memo-values row
-             (see `.matrix-memo-label-row`/`.matrix-memo-row` in the table
-             markup above). The summary column has nothing new to label here
-             (both its fields are already named in the box above), but it
-             still has to claim this same vertical space, or its body rows
-             would start one row-height too high relative to the table's body
-             rows. Built from the identical two heights the table's own rows
-             use (`labelRowHeight` for the spanning row, `headRowTwoHeight`
-             for the memo row), so the two sides can never disagree about how
-             tall this reserved strip is. -->
-        <div class="matrix-summary-head matrix-summary-head--sub" style={`height: calc(${labelRowHeight} + ${headRowTwoHeight})`}></div>
         {#each rows as start (start)}
           {@const runningEnd = runningBestEndAtStep.get(start)}
           {@const bestEndChosen = runningEnd != null && isChosen(start, runningEnd)}
@@ -941,6 +913,16 @@
   /* The visible arithmetic key: names the two parts every cell's breakdown
      subtext already shows (own line's score, then the rest), so the subtext
      never needs its own inline prose — it just reads against this key instead. */
+  /* Names both axes once, here, rather than in the corner cell: that cell is
+     40px wide on a phone, and two words plus a diagonal cannot share it. The
+     diagonal still shows the split; these say which side is which. Sits at the
+     left of the same line the arithmetic key ends, since the key already
+     pushes itself right. */
+  .legend-item--axes {
+    gap: var(--space-12);
+    font-variant-numeric: tabular-nums;
+  }
+
   .legend-item--key {
     margin-left: auto;
     font-size: var(--text-13);
@@ -1182,25 +1164,6 @@
     stroke: var(--color-hairline);
     stroke-width: 1px;
     vector-effect: non-scaling-stroke;
-  }
-
-  .corner-label {
-    position: absolute;
-    font-size: var(--text-13);
-    font-weight: 500;
-    color: var(--color-text-secondary);
-  }
-
-  /* start labels the row axis, so it sits below the diagonal; end labels the
-     column axis, so it sits above it. */
-  .corner-label--start {
-    bottom: var(--space-4);
-    left: var(--space-8);
-  }
-
-  .corner-label--end {
-    top: var(--space-4);
-    right: var(--space-8);
   }
 
   /* Row 2's own leading cell — the `minScore[end]` label. Opaque background
@@ -1759,6 +1722,32 @@
       display: none;
     }
 
+    /* `start index` and `end index` together with the arithmetic key need about
+       350px, and the panel is 343px at 375px wide, so the two wrapped onto
+       separate lines. The arrows carry the meaning; the repeated word does not,
+       and dropping it lets both sit on the key's line as intended. */
+    .axis-word {
+      display: none;
+    }
+
+    /* minScore[end] does not appear at this width at all. It is the same array
+       the summary column already shows per row, indexed the other way, and that
+       column stacks two numbers in every row — so a header stacking two numbers
+       as well would make one visual convention mean two different things. The
+       stepper still prints both addends for the current step. */
+    .matrix-memo-row {
+      display: none;
+    }
+
+    /* A five digit total renders 41px and the cell's content box was 40px, so
+       every wide number clipped by a pixel. Narrower side padding here rather
+       than a wider column, since the column count is what a phone is short of. */
+    .matrix-cell {
+      padding-left: var(--space-8);
+      padding-right: var(--space-8);
+    }
+
+
     .matrix-summary-narrow {
       display: flex;
       flex-direction: column;
@@ -1770,34 +1759,6 @@
       border-left: 1px solid var(--color-hairline);
     }
 
-    /* The diagonal is what could not fit 40px, not the words: `end` renders
-       23px and `start` 29px, both inside the column. What broke was two
-       absolutely positioned labels and a diagonal competing for one 40x48
-       cell. So drop the diagonal here and set the two words as ordinary
-       stacked lines — `end` above, naming the columns, `start` below, naming
-       the rows, in the same order they appear on the axes. */
-    .corner-diagonal {
-      display: none;
-    }
-
-    .corner-split-inner {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      justify-content: center;
-    }
-
-    .corner-label {
-      position: static;
-    }
-
-    .corner-label--end {
-      order: 1;
-    }
-
-    .corner-label--start {
-      order: 2;
-    }
 
     /* Both labels stack inside the table's one remaining header row (row 2,
        the memo row, is hidden below — see (3)), same order as the stacked
