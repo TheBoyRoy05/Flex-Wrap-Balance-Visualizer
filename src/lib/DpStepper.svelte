@@ -114,38 +114,38 @@
   <div class="stepper-body">
     {#if evalEvent}
       <p class="stepper-headline tnum">
-        row <strong>{evalEvent.start}</strong> | candidate end <strong>{evalEvent.end}</strong>
+        Row <strong>{evalEvent.start}</strong> | Candidate End <strong>{evalEvent.end}</strong>
       </p>
       <div class="stepper-eval tnum">
         <span class="stepper-eval-range">[{evalEvent.start}, {evalEvent.end})</span>
         <span class="stepper-eval-items">{itemsLabel(evalEvent.start, evalEvent.end)}</span>
         <span class="stepper-eval-math">
-          reads minScore[<strong>{evalEvent.memoIndex}</strong>] = {fmt(evalEvent.memoValue)}
+          Reads minScore[<strong>{evalEvent.memoIndex}</strong>] = {fmt(evalEvent.memoValue)}
           | {fmt(evalEvent.lineScore)} + {fmt(evalEvent.memoValue)} = <strong>{fmt(evalEvent.total)}</strong>
         </span>
         {#if evalEvent.isChosen}
-          <span class="stepper-eval-tag">wins so far</span>
+          <span class="stepper-eval-tag">Wins So Far</span>
         {/if}
       </div>
     {:else if settleEvent}
       <p class="stepper-headline tnum">
-        row <strong>{settleEvent.start}</strong> settles
+        Row <strong>{settleEvent.start}</strong> Settles
       </p>
       <p class="stepper-settle tnum">
         minScore[<strong>{settleEvent.start}</strong>] &larr; <strong>{fmt(settleEvent.settledValue)}</strong>
-        | now readable by rows &lt; {settleEvent.start}
+        | Now Readable by Rows &lt; {settleEvent.start}
       </p>
     {:else if tracebackEvent}
       <p class="stepper-headline tnum">
-        selecting link <strong>{tracebackEvent.start}</strong> &rarr; <strong>{tracebackEvent.end}</strong>
+        Selecting Link <strong>{tracebackEvent.start}</strong> &rarr; <strong>{tracebackEvent.end}</strong>
       </p>
       <div class="stepper-eval tnum">
         <span class="stepper-eval-range">[{tracebackEvent.start}, {tracebackEvent.end})</span>
         <span class="stepper-eval-items">{itemsLabel(tracebackEvent.start, tracebackEvent.end)}</span>
-        <span class="stepper-eval-tag">on chosen path</span>
+        <span class="stepper-eval-tag">On Chosen Path</span>
       </div>
     {:else if resultEvent}
-      <p class="stepper-headline tnum">chosen line breaks</p>
+      <p class="stepper-headline tnum">Chosen Line Breaks</p>
       <div class="stepper-result">
         <!-- What balancedLineBreaks actually returns: the end index of each
              line, in order. The segments and their item sizes were a friendlier
@@ -154,7 +154,7 @@
         <code class="stepper-breaks tnum">[{resultEvent.breaks.join(', ')}]</code>
       </div>
     {:else}
-      <p class="stepper-headline tnum">matrix empty | minScore[n] = 0</p>
+      <p class="stepper-headline tnum">Matrix Empty | minScore[n] = 0</p>
     {/if}
   </div>
 </div>
