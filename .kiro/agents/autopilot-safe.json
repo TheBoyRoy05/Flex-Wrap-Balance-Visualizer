@@ -1,6 +1,6 @@
 {
   "name" : "autopilot-safe",
-  "description" : "Autopilot with guardrails: reads/searches/builds run without prompts, destructive shell/writes are blocked or still confirmed, subagent dispatch to trusted agents is auto-approved.",
+  "description" : "Autopilot with guardrails: reads/searches/builds run without prompts, destructive shell/writes are blocked or still confirmed, trusted subagent dispatch is auto-approved, though work is done inline by default.",
   "allowedTools" : [ "read", "grep", "glob", "code", "knowledge", "introspect", "goal", "todo_list", "@creds-agent" ],
   "tools" : [ "read", "write", "shell", "grep", "glob", "code", "knowledge", "introspect", "goal", "todo_list", "subagent", "@playwright", "@creds-agent" ],
   "mcpServers" : {
@@ -31,7 +31,7 @@
   },
   "hooks" : {
     "userPromptSubmit" : [ {
-      "command" : "echo 'Reminders: (1) respond in caveman style — terse, drop articles/filler, keep technical accuracy. (2) You are the PM: delegate implementation/investigation/review to subagents (locate=haiku search, mechanical=haiku bounded edit, deadcode=sonnet orphan cleanup, ux-advocate=sonnet UX critique, svelte-expert=sonnet Svelte). Always pass model explicitly. Keep design, decisions, reporting, commits inline.'"
+      "command" : "echo 'Reminders: (1) respond in caveman style — terse, drop articles/filler, keep technical accuracy. (2) Do the work inline: read the file, make the edit, run the command, measure the result. subagent is blocking-only, so it buys no parallelism and its verification claims have to be re-measured anyway. Dispatch only for read-heavy search whose file contents you do not want in context.'"
     } ]
   }
 }
