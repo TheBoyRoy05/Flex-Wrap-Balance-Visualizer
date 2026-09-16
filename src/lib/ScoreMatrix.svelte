@@ -519,13 +519,7 @@
               bind:this={indexColEl}
               style={`height: ${headRowOneHeight}`}
             >
-              <div class="corner-split-inner">
-                <svg class="corner-diagonal" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                  <line x1="0" y1="0" x2="100" y2="100" />
-                </svg>
-                <span class="corner-label corner-label--start">start</span>
-                <span class="corner-label corner-label--end">end</span>
-              </div>
+              <span class="corner-axes">start \ end</span>
             </th>
             {#each cols as end (end)}
               <th class="matrix-head tnum" style={`height: ${headRowOneHeight}`}>{end}</th>
@@ -814,6 +808,13 @@
     flex: 1 1 auto;
     min-width: 0;
     overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .matrix-scroll::-webkit-scrollbar {
+    width: 0;
+    height: 0;
   }
 
   .matrix-middle {
@@ -830,22 +831,21 @@
      position, not something derivable from props alone. Hidden by default
      (`opacity: 0`), so it never appears when the content already fits and
      never lingers once scrolled all the way to the right edge. */
-  .matrix-scroll::after {
+  /* Anchored on the summary block, NOT inside the scroller. Inside it, this
+     pseudo-element sat in the scroll container's flow and added its own height
+     to scrollHeight, so the matrix gained a vertical scrollbar and clipped
+     half its own rows. Out here it cannot affect the scroller's content size
+     at all, and it still lands exactly on the seam because the summary block
+     begins where the scrolling area ends. */
+  .matrix-scroll--overflowing + .matrix-summary::before {
     content: '';
-    position: sticky;
-    left: 100%;
-    display: block;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 100%;
     width: var(--space-24);
-    height: 100%;
-    margin-left: calc(var(--space-24) * -1);
     pointer-events: none;
     background: linear-gradient(to right, transparent, var(--color-surface));
-    opacity: 0;
-    transition: opacity 200ms ease-out;
-  }
-
-  .matrix-scroll--overflowing::after {
-    opacity: 1;
   }
 
   /* The sticky index column: corner, minScore[end] label, and every row's
@@ -880,6 +880,7 @@
   .matrix-summary {
     display: flex;
     flex: none;
+    position: relative;
   }
 
   .matrix-summary-col {
@@ -962,51 +963,25 @@
      the cell's actual box, so the line always lands on the real corners
      whatever the cell's width or height.
 
-     The positioning context for the diagonal/labels lives on an inner
-     `.corner-split-inner` div, not on the `<th>` itself: this `<th>` also
-     carries `.matrix-sticky-col` (`position: sticky`, see that rule), and a
-     `<th>` can only have one `position` value — `relative` here would win the
-     cascade over `sticky` and silently un-pin this one cell while every other
-     cell in the column stayed pinned, which is exactly the kind of
-     one-off sticky failure this design has to rule out. */
+     This cell carries `.matrix-sticky-col` (`position: sticky`), and a `<th>`
+     can only have one `position` value, so nothing here may set `relative`:
+     it would win the cascade over `sticky` and silently un-pin this one cell
+     while the rest of the column stayed put. */
   .matrix-corner--split {
     height: var(--space-48);
   }
 
-  .corner-split-inner {
-    position: relative;
-    width: 100%;
-    height: 100%;
-  }
-
-  .corner-diagonal {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-  }
-
-  .corner-diagonal line {
-    stroke: var(--color-hairline);
-    stroke-width: 1px;
-    vector-effect: non-scaling-stroke;
-  }
-
-  .corner-label {
-    position: absolute;
+  /* One label naming both axes, rather than a drawn diagonal with a label in
+     each triangle. This cell is 152px wide and 48px tall, so a corner-to-corner
+     diagonal is shallow enough that both labels sit at almost the same height,
+     crowding the line they are supposed to be separated by. The backslash says
+     the same thing in the space available. */
+  .corner-axes {
+    display: block;
     font-size: var(--text-13);
     font-weight: 500;
     color: var(--color-text-secondary);
-  }
-
-  .corner-label--start {
-    bottom: var(--space-8);
-    left: var(--space-8);
-  }
-
-  .corner-label--end {
-    top: var(--space-8);
-    right: var(--space-8);
+    white-space: nowrap;
   }
 
   /* Row 2's own leading cell — the `minScore[end]` label. Opaque background
