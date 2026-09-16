@@ -318,7 +318,7 @@
   // the "five columns fill it" budget. This is a fact about the container's
   // live rendered size, not a fixed pixel guess, so it has to be measured
   // from the DOM rather than assumed in a stylesheet. This is the same
-  // $state-at-the-DOM-boundary reasoning `canScrollRight` below uses: Svelte
+  // $state-at-the-DOM-boundary reasoning: Svelte
   // has no way to know a container's own box size except by asking it.
   //
   // Measured from `.matrix-panel` (this component's own root), not from the
@@ -338,7 +338,6 @@
   let panelEl: HTMLDivElement | undefined = $state();
   let summaryEl: HTMLDivElement | undefined = $state();
   let indexColEl: HTMLTableCellElement | undefined = $state();
-  let middleScrollEl: HTMLDivElement | undefined = $state();
   let middleRegionWidth = $state(0);
   // The sticky index column's own rendered width — needed again below when
   // setting the table's total min-width. `table-layout: fixed` divides
@@ -407,12 +406,6 @@
     return widest;
   });
 
-  // `canScrollRight` is genuine runtime state, not a derived value: it depends
-  // on the scroll container's own layout (does its content overflow, and if so,
-  // how far has the reader already scrolled), which Svelte has no way to
-  // observe except by asking the DOM directly.
-  let canScrollRight = $state(false);
-
   // Offscreen probe element, styled identically to `.matrix-cell-breakdown`
   // (same font/size/tabular-nums — see the template, `class="tnum"` on the
   // probe and `font-size: var(--text-13)` in its style block below), used
@@ -438,13 +431,6 @@
     middleRegionWidth = panelEl.clientWidth - summaryEl.getBoundingClientRect().width - indexColWidth;
   }
 
-  function updateScrollAffordance() {
-    if (!middleScrollEl) return;
-    // 1px slack: some browsers report a fractional scrollWidth/clientWidth
-    // mismatch even at the true scrolled-to-end position.
-    canScrollRight = middleScrollEl.scrollWidth - middleScrollEl.scrollLeft - middleScrollEl.clientWidth > 1;
-  }
-
   // Re-measure whenever the region's content could have changed the overflow:
   // on mount, on every scroll, and whenever the item count changes the number
   // of candidate columns (n is read here only to retrigger the effect — the
@@ -456,14 +442,12 @@
   $effect(() => {
     n;
     updateMiddleWidth();
-    updateScrollAffordance();
   });
 
   $effect(() => {
     if (!panelEl) return;
     const observer = new ResizeObserver(() => {
       updateMiddleWidth();
-      updateScrollAffordance();
     });
     observer.observe(panelEl);
     return () => observer.disconnect();
@@ -502,12 +486,7 @@
          columns exactly fill it and a sixth begins to overflow, at which
          point .matrix-scroll takes over from table-layout: fixed dividing
          the space evenly. -->
-    <div
-      class="matrix-scroll"
-      class:matrix-scroll--overflowing={canScrollRight}
-      bind:this={middleScrollEl}
-      onscroll={updateScrollAffordance}
-    >
+    <div class="matrix-scroll">
       <table
         class="matrix-table matrix-middle"
         style={`--candidate-min-w: ${candidateMinWidth}px; min-width: calc(${indexColWidth}px + ${n} * ${candidateMinWidth}px)`}
@@ -831,32 +810,6 @@
     table-layout: fixed;
   }
 
-  /* Scroll affordance: a fade at the scroll container's own trailing edge, so
-     a reader can tell there is more to the right without a sentence of
-     prose. Shown only when `.matrix-scroll` carries `--overflowing` —
-     toggled from `canScrollRight`, genuine runtime state set by measuring
-     the DOM (see the script block), because "is there more content to the
-     right of what's currently visible" is a fact about live scroll
-     position, not something derivable from props alone. Hidden by default
-     (`opacity: 0`), so it never appears when the content already fits and
-     never lingers once scrolled all the way to the right edge. */
-  /* Anchored on the summary block, NOT inside the scroller. Inside it, this
-     pseudo-element sat in the scroll container's flow and added its own height
-     to scrollHeight, so the matrix gained a vertical scrollbar and clipped
-     half its own rows. Out here it cannot affect the scroller's content size
-     at all, and it still lands exactly on the seam because the summary block
-     begins where the scrolling area ends. */
-  .matrix-scroll--overflowing + .matrix-summary::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    right: 100%;
-    width: var(--space-24);
-    pointer-events: none;
-    background: linear-gradient(to right, transparent, var(--color-surface));
-  }
-
   /* The sticky index column: corner, minScore[end] label, and every row's
      start index. `position: sticky; left: 0` keeps it visible while the
      candidate columns scroll underneath — this is the one sticky column, and
@@ -896,7 +849,6 @@
   .matrix-summary {
     display: flex;
     flex: none;
-    position: relative;
   }
 
   .matrix-summary-col {
