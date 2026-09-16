@@ -85,16 +85,6 @@
   // Renders `breaks` (one-past-last-item indices) as the [start, end) segments
   // they describe — the same range notation `.stepper-eval-range` already uses
   // for a single candidate/traceback link, just one chip per line instead of one.
-  function segments(breaks: number[]): { start: number; end: number }[] {
-    const result: { start: number; end: number }[] = [];
-    let start = 0;
-    for (const end of breaks) {
-      result.push({ start, end });
-      start = end;
-    }
-    return result;
-  }
-
   const evalEvent = $derived(event?.kind === 'evaluate' ? (event as CellEvaluateEvent) : undefined);
   const settleEvent = $derived(event?.kind === 'settle' ? event : undefined);
   const tracebackEvent = $derived(event?.kind === 'traceback' ? (event as TracebackStepEvent) : undefined);
@@ -157,12 +147,11 @@
     {:else if resultEvent}
       <p class="stepper-headline tnum">chosen line breaks</p>
       <div class="stepper-result">
-        {#each segments(resultEvent.breaks) as seg (seg.start)}
-          <span class="stepper-chip tnum">
-            <span class="stepper-eval-range">[{seg.start}, {seg.end})</span>
-            <span class="stepper-eval-items">{itemsLabel(seg.start, seg.end)}</span>
-          </span>
-        {/each}
+        <!-- What balancedLineBreaks actually returns: the end index of each
+             line, in order. The segments and their item sizes were a friendlier
+             restatement, but the point of the last step is to land on the
+             function's own output. -->
+        <code class="stepper-breaks tnum">[{resultEvent.breaks.join(', ')}]</code>
       </div>
     {:else}
       <p class="stepper-headline tnum">matrix empty | minScore[n] = 0</p>
@@ -286,6 +275,11 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-8);
+  }
+
+  .stepper-breaks {
+    font-size: var(--text-15);
+    color: var(--color-accent);
   }
 
   .stepper-chip {
