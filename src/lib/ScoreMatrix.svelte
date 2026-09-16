@@ -869,11 +869,18 @@
      scrolling candidate cannot show through underneath while this column is
      pinned — including the corner cell and the minScore[end] label cell,
      both of which sit in this same column and got exactly this treatment. */
+  /* The index column's width is declared HERE, on every cell in the column,
+     not only on the body cells. Under `table-layout: fixed` the first row
+     decides each column's width, and the first row holds the corner cell — a
+     width on `.matrix-row-head` alone is in the wrong row to be consulted, so
+     the column collapsed to an equal share of the table and the
+     `minScore[end]` label no longer fit it. */
   .matrix-sticky-col {
     position: sticky;
     left: 0;
     z-index: 2;
     background: var(--color-surface);
+    width: calc(var(--space-64) + var(--space-64) + var(--space-24));
   }
 
   /* RIGHT: fixed width, never scrolls. Two flex columns, minScore[start] and
@@ -1078,6 +1085,29 @@
      rule across this column — the index column looked unruled while every
      other column was separated. Same 1px hairline, same edge, so rows stay the
      height the shared `--row-h` expects. */
+  /* Vertical rules between columns. Declared with the adjacent sibling
+     selector so the FIRST candidate column is skipped: the index column
+     already draws its own `border-right`, and that edge belongs to the sticky
+     cell rather than to a scrolling neighbour, so it stays put while the
+     candidates move under it. A `border-left` on the first candidate would
+     double that line into 2px under `border-collapse: separate`, where
+     neighbours never share an edge.
+
+     `box-sizing: border-box` (set globally) keeps this 1px inside the column's
+     declared width, so it cannot widen a column or disturb the measured floor
+     that keeps decomposition text unclipped. */
+  .matrix-head + .matrix-head,
+  .matrix-minscore + .matrix-minscore,
+  .matrix-cell + .matrix-cell {
+    border-left: 1px solid var(--color-hairline);
+  }
+
+  /* Same rule between minScore[start] and bestEnd[start]. These are flex
+     columns, not table cells, so they need it declared on the column itself. */
+  .matrix-summary-col + .matrix-summary-col {
+    border-left: 1px solid var(--color-hairline);
+  }
+
   .matrix-row-head {
     width: calc(var(--space-64) + var(--space-64) + var(--space-24));
     border-top: 1px solid var(--color-hairline);
