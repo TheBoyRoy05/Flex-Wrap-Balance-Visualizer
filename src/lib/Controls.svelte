@@ -31,6 +31,16 @@
   // this explicit commit point (blur/change) — rather than on every keystroke via
   // `oninput` — avoids fighting the user mid-type while still guaranteeing capacity
   // can never reach 0 or below, and gap never negative, once the field is left.
+  /* Rewrite the field to the numbers actually parsed, once editing is done.
+     parseSizes silently drops any token that is not a finite number, so
+     "abc, def, 40, , xyz, 50" laid out as two items while the field still read
+     as five — the visible text and the thing being visualised disagreed, with
+     nothing to say which tokens survived. Normalising on commit rather than on
+     every keystroke leaves typing alone. */
+  function normalizeSizes() {
+    balanceState.sizesInput = balanceState.sizes.join(', ');
+  }
+
   function clampCapacity(event: Event) {
     const raw = Number((event.target as HTMLInputElement).value);
     balanceState.capacity = Number.isFinite(raw)
@@ -50,6 +60,7 @@
     <input
       type="text"
       bind:value={balanceState.sizesInput}
+      onchange={normalizeSizes}
       class="field-input"
     />
   </label>

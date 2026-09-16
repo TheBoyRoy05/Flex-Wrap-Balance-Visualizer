@@ -1357,8 +1357,15 @@
      1.5px accent ring below once a row minimum also becomes chosen; a row
      minimum off the chosen path (row 1 at the default input) stays this way
      forever, never upgraded. */
+  /* Dashed, where the chosen cell's ring is solid. The two states were
+     separated only by hue and half a pixel of weight, which asks a reader to
+     learn the legend before the matrix means anything, and fails outright
+     without colour. Dashed reads as provisional on its own. `outline` rather
+     than a border so it cannot affect the cell's box, and a negative offset to
+     sit inside the cell like the ring it replaces. */
   .matrix-cell--rowmin {
-    box-shadow: inset 0 0 0 1px var(--color-text);
+    outline: 1px dashed var(--color-text);
+    outline-offset: -1px;
   }
 
   /* The one accent on this page: the row-minimum cells that also lie on the
@@ -1371,6 +1378,10 @@
     color: var(--color-accent);
     font-weight: 600;
     box-shadow: inset 0 0 0 1.5px var(--color-accent);
+    /* Every chosen cell is also its row's minimum, so it would otherwise wear
+       the provisional dashed outline underneath the solid ring and read as both
+       states at once. The traceback has resolved this one; drop the dashes. */
+    outline: none;
   }
 
   .matrix-cell--chosen .matrix-cell-breakdown {

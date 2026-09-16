@@ -129,10 +129,18 @@
               </div>
               {#if line.free > 0}
                 <div class="free" title="free: {line.free}">
-                  <span class="free-label">
-                    {#if line.free > 20}free: {/if}
-                    {line.free}
-                  </span>
+                  <!-- The number is dropped once the free region is too narrow to
+                       hold it clear of the item beside it: pinned to the row's
+                       right edge, it would otherwise grow left until it touched
+                       the chip and read as one garbled value. Free space that
+                       small is already legible as "barely any room", so the
+                       digits were adding nothing the row did not show. -->
+                  {#if line.free * scale > 24}
+                    <span class="free-label">
+                      {#if line.free > 20}free: {/if}
+                      {line.free}
+                    </span>
+                  {/if}
                 </div>
               {:else if line.overflow}
                 <div class="overflow-badge" title="overflow: length exceeds capacity — this line's 0 is waived, not earned">
@@ -143,7 +151,7 @@
           {/each}
         </div>
       </div>
-      <p class="panel-total">
+      <p class="panel-total" class:panel-total--overflow={lines.some((line) => line.overflow)}>
         Total squared free space: <span class="panel-total-value">{total}</span>
         {#if lines.some((line) => line.overflow)}
           <span class="panel-total-overflow-note">— includes an overflowing line</span>
@@ -346,6 +354,14 @@
   }
 
   .panel-total-overflow-note {
+    color: var(--color-overflow);
+  }
+
+  /* An overflowing line's score is waived to 0 rather than earned, so the total
+     must not wear the same confident weight as a real minimum — at a capacity
+     below every item BOTH strategies read 0, and in primary bold that looks
+     like a perfect tie rather than "cannot be scored". */
+  .panel-total--overflow .panel-total-value {
     color: var(--color-overflow);
   }
 </style>
