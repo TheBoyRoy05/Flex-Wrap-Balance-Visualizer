@@ -4,7 +4,33 @@ An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap:
 
 ![Hero](/src/assets/hero.png)
 
-## The Core Algorithm
+## The Greedy Algorithm (flex-wrap: wrap)
+
+```python
+def greedyLineBreaks(itemSizes: List[int], capacity: int, gap: int) -> List[int]
+  lineBreaks = []
+  lineStartIndex = 0
+
+  while nextIndex < len(itemSizes):
+    lineSize = 0
+
+    for nextIndex in range(lineStartIndex, len(itemSizes)):
+      firstItem = (nextIndex == lineStartIndex)
+
+      if not firstItem and lineSize + itemSizes[nextIndex] > capacity:
+        break
+      lineSize += itemSizes[nextIndex] + gap
+
+    lineBreaks.append(nextIndex)
+    lineStartIndex = nextIndex
+  return lineBreaks
+```
+
+With both greedy and , take in the item sizes, capacity, and gap and output a list of indices where each line ends. In the above example, this would be `[3, 4, 5]` for greedy and `[2, 4, 5]` for balanced.
+
+The logic for the greedy algorithm is fairly straightforward: keep adding items to a line until the line overflows. The only non-trivial bit is `not firstItem`. This is to follow the rule that each line has at least one item, even if it's bigger than capacity. Otherwise, if the next item overflows, move to the next row.
+
+## The Core Balance Algorithm
 
 The goal of balancing items is to homogenize the free space. To achieve this, we aim to minimize the following "score":
 
@@ -34,7 +60,7 @@ We also store $\texttt{bestEnd}[\texttt{start}]$ as the last $\texttt{end}$ whic
 
 Now we recursively look at the best line ends starting at $\texttt{start} = 0$ and updating it with $\texttt{start} = \texttt{bestEnd}[\texttt{start}]$ and adding it to our resulting list of line starts.
 
-With this, we have found the best line breaks which minimzes the sum of the squares of free space, hence achieving a balanced solution.
+With this, we have found the best line breaks which minimizes the sum of the squares of free space, hence achieving a balanced solution.
 
 ### Optimizations
 
