@@ -74,12 +74,14 @@ With this, we have found the best line breaks which minimize the sum of the squa
 
 - When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediately and mark the rest as impossible. This is because all item sizes are non-negative so we'll stay above capacity with more items.
 
-  With this, we can further decrease our time complexity to $O(n * L)$ where $L$ is the average line length. In the typical case, $L << n$ and hence, we can typically achieve near $O(n)$, down from the $O(2^n)$ of brute force. Incredible!
+  With this, we can further decrease our time complexity to $O(n * L)$ where $L$ is the average line length. In the typical case, $L << n$ and hence, we can typically achieve near $O(n)$, down from the $O(2^n)$ of brute force. Gyatt Damn!
+
+  It's especially crazy for me since this is the first practical use case for Dynamic Programming that I've seen out in the wild.
 
 ## Other Interactions
 
-### [flex-line-count]((https://drafts.csswg.org/css-flexbox-2/#flex-line-count-property))
-The CSS Specification also calls for this new CSS property in tandem with `flex-wrap: balance` which specifies the minimum number of lines that the items should occupy while also being balanced.
+### [Flex Line Count]((https://drafts.csswg.org/css-flexbox-2/#flex-line-count-property))
+The CSS Specification also calls for a new CSS property, `flex-line-count`, in tandem with `flex-wrap: balance` which specifies the minimum number of lines that the items should occupy while also being balanced.
 
 This adds an extra dimension to the Dynamic Programming Algorithm that's not captured by this visualizer because now we must find the most balanced solution across 
 
