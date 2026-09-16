@@ -165,7 +165,7 @@
     flex-direction: column;
     gap: var(--space-16);
     padding: var(--space-16);
-    border: 1px solid var(--color-hairline);
+    border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-10);
     background: var(--color-surface);
   }
@@ -181,7 +181,7 @@
     height: var(--control-height);
     padding: 0 var(--space-12);
     border-radius: var(--radius-8);
-    border: 1px solid var(--color-hairline);
+    border: 1px solid var(--color-border-strong);
     background: var(--color-bg);
     color: var(--color-text);
     font: inherit;

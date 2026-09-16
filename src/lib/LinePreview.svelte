@@ -184,7 +184,7 @@
     flex-direction: column;
     gap: 0;
     min-width: 0;
-    border: 1px solid var(--color-hairline);
+    border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-10);
     overflow: hidden;
   }

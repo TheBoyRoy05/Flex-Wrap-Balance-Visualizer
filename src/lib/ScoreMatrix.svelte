@@ -628,6 +628,12 @@
                 <svg class="corner-diagonal" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                   <line x1="0" y1="0" x2="100" y2="100" />
                 </svg>
+                <!-- Named in the triangles the diagonal already makes, which reads more
+                     directly than stating the axes over in the legend. Hidden below
+                     768px, where a 40px corner cannot hold two words and the legend
+                     names them instead. -->
+                <span class="corner-label corner-label--start">start</span>
+                <span class="corner-label corner-label--end">end</span>
               </div>
             </th>
             {#each cols as end (end)}
@@ -740,8 +746,7 @@
     <div class="matrix-summary" bind:this={summaryEl}>
       <div class="matrix-summary-wide">
         <div class="matrix-summary-col matrix-summary-col--settled">
-          <div class="matrix-summary-head" style={`height: ${headRowOneHeight}`}><code>minScore[start]</code></div>
-          <div class="matrix-summary-head matrix-summary-head--sub" style={`height: ${headRowTwoHeight}`}></div>
+          <div class="matrix-summary-head" style={`height: calc(${headRowOneHeight} + ${headRowTwoHeight})`}><code>minScore[start]</code></div>
           {#each rows as start (start)}
             <div
               class={['matrix-summary-cell', 'tnum', justSettledMemo(start) && 'matrix-summary-cell--justsettled']}
@@ -755,8 +760,7 @@
           {/each}
         </div>
         <div class="matrix-summary-col matrix-summary-col--bestend">
-          <div class="matrix-summary-head" style={`height: ${headRowOneHeight}`}><code>bestEnd[start]</code></div>
-          <div class="matrix-summary-head matrix-summary-head--sub" style={`height: ${headRowTwoHeight}`}></div>
+          <div class="matrix-summary-head" style={`height: calc(${headRowOneHeight} + ${headRowTwoHeight})`}><code>bestEnd[start]</code></div>
           {#each rows as start (start)}
             {@const runningEnd = runningBestEndAtStep.get(start)}
             {@const bestEndChosen = runningEnd != null && isChosen(start, runningEnd)}
@@ -953,10 +957,10 @@
   .matrix-panel-body {
     display: flex;
     align-items: stretch;
-    /* Thicker than the hairlines inside it, so the matrix reads as one framed
-       object rather than a grid that happens to stop. Composed from a spacing
-       token to stay on the scale. */
-    border: calc(var(--space-8) / 4) solid var(--color-hairline);
+    /* Brighter than the hairlines inside it, so the matrix reads as one framed
+       object rather than a grid that happens to stop. Weight alone did not carry
+       that: a thicker hairline still looked like a gridline. */
+    border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-10);
     overflow: hidden;
   }
@@ -1074,7 +1078,7 @@
      and nothing else draws it. The summary block sits outside the scroller, so
      the line is static and cannot double against a scrolling neighbour. */
   .matrix-summary-col--settled {
-    border-left: 1px solid var(--color-hairline);
+    border-left: 1px solid var(--color-border-strong);
   }
 
   .matrix-summary-head {
@@ -1089,16 +1093,6 @@
     border-bottom: 1px solid var(--color-hairline);
   }
 
-  /* Row 2's header cell in each summary column stays blank/neutral —
-     "minScore[start]"/"bestEnd[start]" already labels the column once, in
-     row 1 above; repeating a value in both header rows of the same column
-     would just be noise. Still reserves the same `headRowTwoHeight` the
-     table's own row-2 `<th>` cells reserve (set inline from the script), so
-     the two header rows agree on height without relying on content to make
-     them agree by accident. */
-  .matrix-summary-head--sub {
-    border-bottom: 1px solid var(--color-hairline);
-  }
 
   .matrix-corner,
   .matrix-head,
@@ -1151,6 +1145,24 @@
     position: relative;
     width: 100%;
     height: 100%;
+  }
+
+  .corner-label {
+    position: absolute;
+    font-size: var(--text-13);
+    font-weight: 400;
+    color: var(--color-text-secondary);
+    pointer-events: none;
+  }
+
+  .corner-label--start {
+    left: var(--space-8);
+    bottom: var(--space-4);
+  }
+
+  .corner-label--end {
+    right: var(--space-8);
+    top: var(--space-4);
   }
 
   .corner-diagonal {
@@ -1698,7 +1710,19 @@
      these selectors match, so the wide layout (verified byte-identical: 152px
      index column, five 122.4px candidate columns, two 152px summary columns)
      is completely untouched. */
+  /* The corner names the axes at this width, so the legend saying it too would state
+     one fact twice. Below 768px this flips: the corner is 40px and the legend owns it. */
+  @media (min-width: 768px) {
+    .legend-item--axes {
+      display: none;
+    }
+  }
+
   @media (max-width: 767px) {
+    .corner-label {
+      display: none;
+    }
+
     /* (1) Totals only. The placeholder's second reserved line and the real
        breakdown line both disappear, and .matrix-cell's own reserved height
        drops from a two-line to a one-line box to match — a total alone never
