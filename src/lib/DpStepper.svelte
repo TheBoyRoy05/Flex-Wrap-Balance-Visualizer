@@ -158,10 +158,10 @@
       <p class="stepper-headline tnum">chosen line breaks</p>
       <div class="stepper-result">
         {#each segments(resultEvent.breaks) as seg (seg.start)}
-          <div class="stepper-eval tnum">
+          <span class="stepper-chip tnum">
             <span class="stepper-eval-range">[{seg.start}, {seg.end})</span>
             <span class="stepper-eval-items">{itemsLabel(seg.start, seg.end)}</span>
-          </div>
+          </span>
         {/each}
       </div>
     {:else}
@@ -276,14 +276,32 @@
     letter-spacing: var(--ls-none);
   }
 
-  /* Final-step layout only: one .stepper-eval chip per chosen segment, stacked —
-     same chip look the traceback step already uses for a single link, just one
-     per line instead of one link. No new panel/heading, per the task: the chips
-     themselves are the entire final-step body. */
+  /* Final-step layout only: compact inline chips, one per chosen segment,
+     sitting side by side and wrapping only once they run out of row width —
+     matching the scale of the stepper's other status content (the same
+     .stepper-eval chip is one full-width status line; a result chip is a
+     short label repeated per segment, so it gets its own smaller treatment
+     rather than stacking .stepper-eval full-width, one per row). */
   .stepper-result {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
     gap: var(--space-8);
+  }
+
+  .stepper-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-8);
+    border-radius: var(--radius-6);
+    border: 1px solid var(--color-accent);
+    background: var(--color-accent-tint);
+    font-size: var(--text-13);
+    color: var(--color-accent);
+  }
+
+  .stepper-chip .stepper-eval-items {
+    opacity: 0.75;
   }
 
   .stepper-settle {
