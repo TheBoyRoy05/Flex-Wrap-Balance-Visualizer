@@ -32,7 +32,7 @@ We also store $\texttt{bestEnd}[\texttt{start}]$ as the last $\texttt{end}$ whic
 
 #### Second Pass
 
-Now we recursively look at the best line ends starting at $\texttt{start} = 0$ and updating it with $\texttt{start} = \text{bestEndForStart}[\texttt{start}]$ and adding it to our resulting list of line starts.
+Now we recursively look at the best line ends starting at $\texttt{start} = 0$ and updating it with $\texttt{start} = \texttt{bestEnd}[\texttt{start}]$ and adding it to our resulting list of line starts.
 
 With this, we have found the best line breaks which minimzes the sum of the squares of free space, hence achieving a balanced solution.
 

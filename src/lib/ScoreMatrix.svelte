@@ -193,13 +193,19 @@
   // than in one of the $derived.by blocks above. A mismatch means the `<=` replay
   // above has drifted from balance.ts's own comparison, which is a bug to surface
   // loudly, not swallow.
+  //
+  // The `bestEnd[start]` column renders this exact same `runningBestEndAtStep`
+  // value (see the template), so this one check already covers both the white
+  // row-minimum mark and the column: there's no second read of `bestEnd` to
+  // duplicate the assertion for, and no way for the column to diverge from the
+  // mark without also tripping this same error.
   $effect(() => {
     const ev = currentEvent;
     if (ev?.kind !== 'settle') return;
     const runningEnd = runningBestEndAtStep.get(ev.start);
     if (runningEnd !== bestEnd[ev.start]) {
       console.error(
-        `[ScoreMatrix] running best-so-far mark diverged from bestEnd at settle: ` +
+        `[ScoreMatrix] running best-so-far mark (and bestEnd[start] column) diverged from bestEnd at settle: ` +
           `start=${ev.start} runningEnd=${runningEnd} bestEnd=${bestEnd[ev.start]}`,
       );
     }
@@ -259,6 +265,183 @@
   // trace exists (n === 0). The stepper itself is rendered here (via children), not
   // in App.svelte, so it sits with the table it drives instead of far below it.
   let { activeStart = undefined, children }: { activeStart?: number; children?: import('svelte').Snippet } = $props();
+
+  // --- Three-region layout ------------------------------------------------
+  // The matrix is three independent tables, not one table faking pinned columns
+  // with `position: sticky`. Sticky columns inside a scrolling table share one
+  // border-collapse/paint context with the cells scrolling underneath them —
+  // that shared context is exactly what produced the earlier seam artifacts (a
+  // hairline bleeding through a pinned cell, a digit clipped at the scroll
+  // boundary). Three separate <table> elements have no shared context to leak
+  // through: the left and right tables never scroll and never sit in the same
+  // stacking/paint pass as the middle one.
+  //
+  // The one risk this design takes on is that three independently-flowing
+  // tables must still agree, row for row, on where each row starts and ends.
+  // `--row-h` is that agreement made explicit: computed once, from the exact
+  // two-line content box the cells already reserved, and applied as the same
+  // fixed row height in all three tables' body cells — never left to each
+  // table's own content to happen to match.
+  const rowHeight = `calc(var(--text-13) * var(--lh-body) * 2 + var(--space-8) * 2)`;
+  const headRowOneHeight = 'var(--space-48)';
+  // Row 2's content (the `minScore[end]` label's `<code>` chip in the left
+  // region, each column's live memo value in the middle region) needs more
+  // than a bare `--space-24` to render without the row growing past its own
+  // declared height — the global `code` element (app.css) carries its own
+  // padding, and a memo digit at `--text-13` inside `.matrix-minscore`'s own
+  // `--space-8` padding needs slightly more than 24px too. The right
+  // region's row 2 cells are deliberately empty (see the markup — "settles
+  // at" is already labelled once, in row 1), so with no reserved height of
+  // their own they would otherwise sit at the bare 24px while the other two
+  // tables' real content grows theirs past it — three independently-resolved
+  // `<tr >` heights, agreeing only by accident. `--space-24 + --space-12`
+  // reserves enough for the tallest real content (the `<code>` chip) with no
+  // slack to spare, and is applied as an explicit `height` on every row-2
+  // `<th>` in all three tables (see the template), not just the `<tr>` —
+  // exactly the same fix `--row-h` already applies to every body cell below.
+  const headRowTwoHeight = 'calc(var(--space-24) + var(--space-12))';
+
+  // The middle region is the one scrollable element. Its candidate columns must
+  // each hold at least one fifth of the region's own current width — a fact
+  // about the region's live rendered size, not a fixed pixel guess, so it has
+  // to be measured from the DOM rather than assumed in a stylesheet. This is
+  // the same $state-at-the-DOM-boundary reasoning `canScrollRight` below uses:
+  // Svelte has no way to know a container's own box size except by asking it.
+  //
+  // Measured from `.matrix-regions` (the flex row containing all three
+  // tables), not from the scroll element's own `clientWidth` — the scroll
+  // element's width is downstream of the table's `min-width`, which is itself
+  // built from this same measurement (min-width = n × one-fifth-of-width).
+  // Reading clientWidth back from that element closes a feedback loop: a
+  // first measurement of 0 would floor candidateMinWidth at 0, then a later
+  // real measurement would need a fresh layout pass to notice the table's own
+  // min-width no longer matches — a self-referential loop that a naive fix
+  // (floor the minimum at some legibility constant) breaks the wrong
+  // direction: any floor above the true 1/5 forces a scrollbar at exactly
+  // five columns, which the task states must never happen. `.matrix-regions`'s
+  // own width has no such dependency: it's sized by the flex row itself (100%
+  // of `.matrix-panel`), never by the middle table's min-width, so subtracting
+  // the two fixed regions' real rendered widths from it gives the middle
+  // region's true available width with no circularity.
+  let regionsEl: HTMLDivElement | undefined = $state();
+  let leftEl: HTMLTableElement | undefined = $state();
+  let rightEl: HTMLTableElement | undefined = $state();
+  let middleScrollEl: HTMLDivElement | undefined = $state();
+  let middleRegionWidth = $state(0);
+
+  // One fifth of the middle region's measured width — the task's own floor —
+  // except where that would clip a decomposition ("10000 + 10800"), which the
+  // task states must never happen. The two constraints conflict at narrow
+  // viewports: at 1440px, one fifth of the middle region is comfortably wider
+  // than any decomposition this table renders, so the 1/5 rule is what
+  // decides the floor and five columns fill with no scrollbar, exactly as
+  // specified. Below roughly 768px, one fifth of a much narrower region
+  // shrinks under what a decomposition needs, and clipping a number is the
+  // more serious failure of the two — a truncated number reads as a
+  // different, wrong number, where an early scrollbar is just a
+  // scrollbar — so `decompositionFloorWidth` (measured live from the actual
+  // rendered decomposition text, see below, not a constant borrowed from a
+  // different scenario) wins once it exceeds the 1/5 share. A floor sized
+  // from a fixed guess was tried and rejected: 140px (a figure measured
+  // against a *different*, larger-number run) forced a scrollbar at exactly
+  // five columns even at 1440px for this app's smaller-number default
+  // scenario — the opposite of what the task requires there. Measuring the
+  // real content instead means the floor tracks whatever numbers the current
+  // sizes/capacity/gap inputs actually produce, never a number from an
+  // unrelated scenario. Below the width this floor needs, the region no
+  // longer fits five columns and starts scrolling sooner than five columns'
+  // worth — an explicit, verified tradeoff for narrow viewports, not a
+  // silent one.
+  let decompositionFloorWidth = $state(0);
+  const candidateMinWidth = $derived(Math.max(middleRegionWidth / 5, decompositionFloorWidth));
+
+  // The widest decomposition text ("lineScore + memoValue") this run will ever
+  // reveal, computed from the full score/minScores matrices — not from
+  // whichever cells the animation has revealed *so far*. Using only the
+  // revealed-so-far text would let the floor grow mid-run as later, wider
+  // numbers appear, which would resize the column (and therefore the table)
+  // partway through the fill — exactly the reflow the task requires *not* to
+  // happen between the empty and filled states. Every eligible, non-overflowing
+  // (start, end) pair's total is known up front from `balanceState.result`
+  // regardless of playback step, so the widest string is a fact about the
+  // current sizes/capacity/gap inputs, never about how far the stepper has
+  // gotten.
+  const widestDecompositionText = $derived.by(() => {
+    let widest = '';
+    const { score, minScores } = balanceState.result;
+    for (let start = 0; start < n; start++) {
+      for (let end = start + 1; end <= fittingEnd[start]; end++) {
+        if (isOverflowingLine(len, start, end, balanceState.capacity)) continue;
+        const lineScore = score[start][end];
+        const memoValue = minScores[end];
+        if (lineScore == null || memoValue == null) continue;
+        const text = `${lineScore} + ${memoValue}`;
+        if (text.length > widest.length) widest = text;
+      }
+    }
+    return widest;
+  });
+
+  // `canScrollRight` is genuine runtime state, not a derived value: it depends
+  // on the scroll container's own layout (does its content overflow, and if so,
+  // how far has the reader already scrolled), which Svelte has no way to
+  // observe except by asking the DOM directly.
+  let canScrollRight = $state(false);
+
+  // Offscreen probe element, styled identically to `.matrix-cell-breakdown`
+  // (same font/size/tabular-nums — see the template, `class="tnum"` on the
+  // probe and `font-size: var(--text-13)` in its style block below), used
+  // purely to ask the browser how wide `widestDecompositionText` actually
+  // renders. Measuring the real string in the real font/size is the only way
+  // to get an exact answer; a canvas-based estimate would still need the
+  // exact computed font shorthand duplicated from CSS, and would drift the
+  // moment either copy changed independently of the other.
+  let probeEl: HTMLDivElement | undefined = $state();
+
+  $effect(() => {
+    if (!probeEl) return;
+    // Padding matches `.matrix-cell`'s own space-12 each side, so the
+    // measured width already includes the padding the real cell reserves —
+    // `decompositionFloorWidth` below is then a direct column-width floor,
+    // not a bare text width the caller has to remember to pad separately.
+    decompositionFloorWidth = probeEl.getBoundingClientRect().width;
+  });
+
+  function updateMiddleWidth() {
+    if (!regionsEl || !leftEl || !rightEl) return;
+    middleRegionWidth = regionsEl.clientWidth - leftEl.getBoundingClientRect().width - rightEl.getBoundingClientRect().width;
+  }
+
+  function updateScrollAffordance() {
+    if (!middleScrollEl) return;
+    // 1px slack: some browsers report a fractional scrollWidth/clientWidth
+    // mismatch even at the true scrolled-to-end position.
+    canScrollRight = middleScrollEl.scrollWidth - middleScrollEl.scrollLeft - middleScrollEl.clientWidth > 1;
+  }
+
+  // Re-measure whenever the region's content could have changed the overflow:
+  // on mount, on every scroll, and whenever the item count changes the number
+  // of candidate columns (n is read here only to retrigger the effect — the
+  // actual measurement always comes from the live DOM box, never from a
+  // computed guess at column count × column width). A ResizeObserver on the
+  // outer row also covers the viewport-resize case (768px/375px breakpoints),
+  // since the region's own width changes there without any Svelte state
+  // changing on its own to retrigger this effect.
+  $effect(() => {
+    n;
+    updateMiddleWidth();
+    updateScrollAffordance();
+  });
+
+  $effect(() => {
+    if (!regionsEl) return;
+    const observer = new ResizeObserver(() => {
+      updateMiddleWidth();
+      updateScrollAffordance();
+    });
+    observer.observe(regionsEl);
+    return () => observer.disconnect();
+  });
 </script>
 
 
@@ -282,106 +465,177 @@
     </span>
   </div>
 
-  <div class="matrix-scroll">
-    <table class="matrix">
+  <div class="matrix-width-probe tnum" aria-hidden="true" bind:this={probeEl}>{widestDecompositionText}</div>
+
+  <div class="matrix-regions" bind:this={regionsEl}>
+    <!-- LEFT: fixed, never scrolls. Corner, minScore[end] row title, row indices. -->
+    <table class="matrix-table matrix-left" bind:this={leftEl} style={`--row-h: ${rowHeight}`}>
       <thead>
-        <tr>
-          <th class="matrix-corner matrix-corner--split">
+        <tr style={`height: ${headRowOneHeight}`}>
+          <th class="matrix-corner matrix-corner--split" style={`height: ${headRowOneHeight}`}>
             <svg class="corner-diagonal" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
               <line x1="0" y1="0" x2="100" y2="100" />
             </svg>
             <span class="corner-label corner-label--start">start</span>
             <span class="corner-label corner-label--end">end</span>
           </th>
-          {#each cols as end (end)}
-            <th class="matrix-head tnum">{end}</th>
-          {/each}
-          <th class="matrix-head matrix-head--settled"><code>minScore[start]</code></th>
         </tr>
-        <tr>
-          <th class="matrix-corner matrix-corner--sub tnum"><code>minScore[end]</code></th>
-          {#each cols as end (end)}
-            {@const memoJustSettled = justSettledMemo(end)}
-            {@const memoReading = isReadingMemo(end)}
-            {@const memoVal = liveMemo[end]}
-            <th
-              class={['matrix-minscore', 'tnum', memoJustSettled && 'matrix-minscore--justsettled', memoReading && 'matrix-minscore--reading']}
-            >
-              {#if memoVal != null}
-                {fmtLive(memoVal)}
-              {/if}
-            </th>
-          {/each}
-          <th class="matrix-minscore matrix-minscore--settled"></th>
+        <tr style={`height: ${headRowTwoHeight}`}>
+          <th class="matrix-corner matrix-corner--sub tnum" style={`height: ${headRowTwoHeight}`}><code>minScore[end]</code></th>
         </tr>
       </thead>
       <tbody>
         {#each rows as start (start)}
-          <tr class:matrix-row--active={start === activeStart}>
-            <th class="matrix-row-head tnum">{start}</th>
+          <tr class:matrix-row--active={start === activeStart} style={`height: var(--row-h)`}>
+            <th class="matrix-row-head tnum" scope="row">{start}</th>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+
+    <!-- MIDDLE: the only scrollable region. end headers, minScore[end] memo values,
+         and every candidate cell. Columns floor at one fifth of this region's own
+         measured width (candidateMinWidth), so five columns exactly fill it and a
+         sixth begins to overflow, at which point .matrix-scroll takes over from
+         table-layout: fixed dividing the space evenly. -->
+    <div
+      class="matrix-scroll"
+      class:matrix-scroll--overflowing={canScrollRight}
+      bind:this={middleScrollEl}
+      onscroll={updateScrollAffordance}
+    >
+      <table
+        class="matrix-table matrix-middle"
+        style={`--row-h: ${rowHeight}; --candidate-min-w: ${candidateMinWidth}px; min-width: calc(${n} * ${candidateMinWidth}px)`}
+      >
+        <thead>
+          <tr style={`height: ${headRowOneHeight}`}>
             {#each cols as end (end)}
-              {@const eligible = isEligible(start, end)}
-              {@const overflow = isOverflow(start, end)}
-              {@const voidCell = isVoid(start, end)}
-              {@const cell = revealed(start, end)}
-              {@const shown = isRevealed(start, end)}
-              {@const rowMin = shown && eligible && isRunningBest(start, end)}
-              {@const chosen = shown && eligible && isChosen(start, end)}
-              {@const current = isCurrentCandidate(start, end)}
-              {@const probeDiscovery = isProbeDiscovery(start, end)}
-              {@const probeConsequence = isProbeConsequence(start, end)}
-              <td
-                class={[
-                  'matrix-cell',
-                  shown && overflow && 'matrix-cell--overflow',
-                  rowMin && 'matrix-cell--rowmin',
-                  chosen && 'matrix-cell--chosen',
-                  current && 'matrix-cell--current',
-                  probeDiscovery && 'matrix-cell--probe-discovery',
-                  probeConsequence && 'matrix-cell--probe-consequence',
-                ]}
+              <th class="matrix-head tnum" style={`height: ${headRowOneHeight}`}>{end}</th>
+            {/each}
+          </tr>
+          <tr style={`height: ${headRowTwoHeight}`}>
+            {#each cols as end (end)}
+              {@const memoJustSettled = justSettledMemo(end)}
+              {@const memoReading = isReadingMemo(end)}
+              {@const memoVal = liveMemo[end]}
+              <th
+                class={['matrix-minscore', 'tnum', memoJustSettled && 'matrix-minscore--justsettled', memoReading && 'matrix-minscore--reading']}
+                style={`height: ${headRowTwoHeight}`}
               >
-                {#if shown && cell}
-                  {#if overflow}
-                    <div class="matrix-cell-inf-solo" title="overflow: length exceeds capacity">&infin;</div>
-                  {:else}
-                    <div class="matrix-cell-total tnum">
-                      {cell.total}
+                {#if memoVal != null}
+                  {fmtLive(memoVal)}
+                {/if}
+              </th>
+            {/each}
+          </tr>
+        </thead>
+        <tbody>
+          {#each rows as start (start)}
+            <tr class:matrix-row--active={start === activeStart} style={`height: var(--row-h)`}>
+              {#each cols as end (end)}
+                {@const eligible = isEligible(start, end)}
+                {@const overflow = isOverflow(start, end)}
+                {@const voidCell = isVoid(start, end)}
+                {@const cell = revealed(start, end)}
+                {@const shown = isRevealed(start, end)}
+                {@const rowMin = shown && eligible && isRunningBest(start, end)}
+                {@const chosen = shown && eligible && isChosen(start, end)}
+                {@const current = isCurrentCandidate(start, end)}
+                {@const probeDiscovery = isProbeDiscovery(start, end)}
+                {@const probeConsequence = isProbeConsequence(start, end)}
+                <td
+                  class={[
+                    'matrix-cell',
+                    shown && overflow && 'matrix-cell--overflow',
+                    rowMin && 'matrix-cell--rowmin',
+                    chosen && 'matrix-cell--chosen',
+                    current && 'matrix-cell--current',
+                    probeDiscovery && 'matrix-cell--probe-discovery',
+                    probeConsequence && 'matrix-cell--probe-consequence',
+                  ]}
+                  aria-label={voidCell ? undefined : `start ${start}, end ${end}`}
+                >
+                  {#if shown && cell}
+                    {#if overflow}
+                      <div class="matrix-cell-inf-solo" title="overflow: length exceeds capacity">&infin;</div>
+                    {:else}
+                      <div class="matrix-cell-total tnum">
+                        {cell.total}
+                      </div>
+                      <div class="matrix-cell-breakdown tnum">
+                        <span>{cell.lineScore}</span>
+                        +
+                        <span>{fmtLive(cell.memoValue)}</span>
+                      </div>
+                    {/if}
+                  {:else if !voidCell}
+                    <div class="matrix-cell-placeholder">
+                      <span class="matrix-cell-placeholder-line"></span>
+                      <span class="matrix-cell-placeholder-line"></span>
                     </div>
-                    <div class="matrix-cell-breakdown tnum">
-                      <span>{cell.lineScore}</span>
-                      +
-                      <span>{fmtLive(cell.memoValue)}</span>
+                  {:else}
+                    <div class="matrix-cell-void" aria-hidden="true">
+                      <svg class="void-diagonal" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                        <line x1="0" y1="0" x2="100" y2="100" />
+                        <line x1="100" y1="0" x2="0" y2="100" />
+                      </svg>
                     </div>
                   {/if}
-                {:else if !voidCell}
-                  <div class="matrix-cell-placeholder">
-                    <span class="matrix-cell-placeholder-line"></span>
-                    <span class="matrix-cell-placeholder-line"></span>
-                  </div>
-                {:else}
-                  <div class="matrix-cell-void" aria-hidden="true">
-                    <svg class="void-diagonal" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                      <line x1="0" y1="0" x2="100" y2="100" />
-                      <line x1="100" y1="0" x2="0" y2="100" />
-                    </svg>
-                  </div>
-                {/if}
-              </td>
-            {/each}
+                </td>
+              {/each}
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- RIGHT: fixed, never scrolls. minScore[start] and bestEnd[start]. -->
+    <table class="matrix-table matrix-right" bind:this={rightEl} style={`--row-h: ${rowHeight}`}>
+      <thead>
+        <tr style={`height: ${headRowOneHeight}`}>
+          <th class="matrix-head matrix-head--settled" style={`height: ${headRowOneHeight}`}><code>minScore[start]</code></th>
+          <th class="matrix-head matrix-head--bestend" style={`height: ${headRowOneHeight}`}><code>bestEnd[start]</code></th>
+        </tr>
+        <tr style={`height: ${headRowTwoHeight}`}>
+          <th class="matrix-minscore matrix-minscore--settled" style={`height: ${headRowTwoHeight}`}></th>
+          <th class="matrix-minscore matrix-minscore--bestend" style={`height: ${headRowTwoHeight}`}></th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each rows as start (start)}
+          {@const runningEnd = runningBestEndAtStep.get(start)}
+          {@const bestEndChosen = runningEnd != null && isChosen(start, runningEnd)}
+          <tr class:matrix-row--active={start === activeStart} style={`height: var(--row-h)`}>
             <td
               class={['matrix-cell', 'matrix-cell--settled', 'tnum', justSettledMemo(start) && 'matrix-cell--justsettled']}
             >
-              {#if liveSettled[start] != null}
-                {fmtLive(liveSettled[start])}
-              {/if}
+              <div class="matrix-cell-single">
+                {#if liveSettled[start] != null}
+                  {fmtLive(liveSettled[start])}
+                {/if}
+              </div>
+            </td>
+            <td
+              class={[
+                'matrix-cell',
+                'matrix-cell--bestend',
+                'tnum',
+                justSettledMemo(start) && 'matrix-cell--justsettled',
+                bestEndChosen && 'matrix-cell--bestend-chosen',
+              ]}
+            >
+              <div class="matrix-cell-single matrix-cell-bestend-value">
+                {#if runningEnd != null}
+                  {runningEnd}
+                {/if}
+              </div>
             </td>
           </tr>
         {/each}
       </tbody>
     </table>
   </div>
-
 
   {@render children?.()}
 </div>
@@ -391,6 +645,26 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-16);
+  }
+
+  /* Offscreen measurement probe (see `probeEl` in the script) — never
+     painted, positioned so it can never affect layout or be reached by
+     assistive tech (both `aria-hidden` in the markup and taken out of flow
+     here). `white-space: nowrap` matches `.matrix-cell-breakdown` (see
+     below): the real cell never wraps its decomposition text either, so the
+     probe's natural width is the same single-line width the real cell would
+     need. Padding matches `.matrix-cell`'s own `space-12` each side, so the
+     measured box already includes the padding a real column needs — see the
+     script for why that makes `decompositionFloorWidth` usable directly as a
+     column-width floor. */
+  .matrix-width-probe {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+    visibility: hidden;
+    white-space: nowrap;
+    padding: 0 var(--space-12);
+    font-size: var(--text-13);
   }
 
   .legend {
@@ -481,46 +755,124 @@
     color: var(--color-text);
   }
 
-  .matrix-scroll {
-    overflow-x: auto;
-    /* One hairline frames the whole table — the minimum needed to bound a
-       scrollable region — instead of a bordered panel around bordered rows. */
+  /* The three-region row: left (fixed) | middle (scrolls) | right (fixed).
+     `align-items: stretch` (the flex default) is what lets all three tables
+     — each with its own independent content — stand at equal height as a
+     row, and it's also why `.matrix-scroll`'s fade/scrollbar sit correctly:
+     nothing here needs an explicit height, only the shared --row-h each
+     table's own rows are built from (see the template) keeps them level
+     internally. One hairline frames the whole three-region strip, replacing
+     the single bordered table the old sticky-column layout used — visually
+     identical outer edge, now drawn once around three tables instead of
+     being a property of one. */
+  .matrix-regions {
+    display: flex;
+    align-items: stretch;
     border: 1px solid var(--color-hairline);
     border-radius: var(--radius-10);
+    overflow: hidden;
   }
 
-  .matrix {
-    width: 100%;
-    border-collapse: collapse;
+  .matrix-table {
+    border-collapse: separate;
+    border-spacing: 0;
     text-align: center;
     font-size: var(--text-13);
-    /* Fixed layout: column widths come only from the explicit `width` values
-       below, never grown by content. `min-width` alone doesn't do this — the
-       browser's auto layout still widens a column past its min-width once a
-       cell's content demands more room, which is exactly the jitter a
-       cell-by-cell fill animation must not have (a column sized for "4" at
-       reset must stay that width once it holds "6400 + 900"). */
+  }
+
+  /* LEFT region: fixed width, never scrolls. Sized to fit its own longest
+     content without overflow — the `minScore[end]` label inside a monospace
+     `<code>` chip, which is the widest thing this region ever holds (wider
+     than a two-digit row index, wider than "start"/"end"). 152px, composed
+     from tokens (64 + 64 + 24), is the same figure the old sticky-column
+     layout used for its equivalent trailing-column labels once widened to
+     stop clipping them — reused here because it is a measured fit for that
+     exact label, not a guess. */
+  .matrix-left {
+    flex: none;
+    width: calc(var(--space-64) + var(--space-64) + var(--space-24));
+  }
+
+  /* MIDDLE region: the one scrollable element. `overflow-x: auto` engages
+     only once the table's own `min-width` (n candidate columns at their
+     one-fifth floor, set inline from the measured region width — see
+     candidateMinWidth in the script) exceeds this wrapper's width; below
+     that the table's `width: 100%` lets table-layout: fixed share the
+     leftover space evenly across whatever columns exist, so fewer than five
+     columns never leaves a gap. `flex: 1 1 auto` with `min-width: 0` is what
+     lets this region actually shrink below its content's natural width in
+     the flex row — the default `min-width: auto` on a flex item would
+     otherwise refuse to shrink past the table's own intrinsic width and
+     defeat the whole scrolling mechanism. */
+  .matrix-scroll {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .matrix-middle {
+    width: 100%;
     table-layout: fixed;
+  }
+
+  /* RIGHT region: fixed width, never scrolls. Two columns, minScore[start]
+     and bestEnd[start], each sized from the same tokens the old pinned
+     columns used — see .matrix-head--settled/.matrix-head--bestend below for
+     why each needs the full label width rather than its narrower body
+     content's width. */
+  .matrix-right {
+    flex: none;
+  }
+
+  /* Scroll affordance: a fade at the middle region's own trailing edge, so a
+     reader can tell there is more to the right without a sentence of prose.
+     No longer needs to track a pinned-column offset (the old --settled-w +
+     --bestend-w calc()) — the middle region is now a genuinely separate
+     element with its own right edge, so the fade sits flush against that
+     edge like any other absolutely-positioned overlay would.
+
+     Shown only when `.matrix-scroll` carries `--overflowing` — toggled from
+     `canScrollRight`, genuine runtime state set by measuring the DOM (see the
+     script block), because "is there more content to the right of what's
+     currently visible" is a fact about live scroll position, not something
+     derivable from props alone. Hidden by default (`opacity: 0`), so it
+     never appears when the content already fits and never lingers once
+     scrolled all the way to the right edge. */
+  .matrix-scroll::after {
+    content: '';
+    position: sticky;
+    left: 100%;
+    display: block;
+    width: var(--space-24);
+    height: 100%;
+    margin-left: calc(var(--space-24) * -1);
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, var(--color-surface));
+    opacity: 0;
+    transition: opacity 200ms ease-out;
+  }
+
+  .matrix-scroll--overflowing::after {
+    opacity: 1;
   }
 
   .matrix-corner,
   .matrix-head,
   .matrix-row-head,
   .matrix-minscore {
-    position: sticky;
     font-weight: 500;
     color: var(--color-text-secondary);
     background: var(--color-surface);
     padding: var(--space-8);
+    /* Same reasoning as `.matrix-cell`'s own `vertical-align: middle` below:
+       three independent tables must not resolve their shared header/row-head
+       rows to different heights from each cell's own baseline metrics. */
+    vertical-align: middle;
   }
 
   .matrix-corner {
-    left: 0;
-    top: 0;
-    z-index: 2;
-    /* 96px, composed from tokens (64 + 32) — wide enough for "best from here"
-       in the sub-header row without introducing an off-scale literal. */
-    width: calc(var(--space-64) + var(--space-32));
+    width: 100%;
     text-align: left;
     vertical-align: middle;
     border-bottom: 1px solid var(--color-hairline);
@@ -539,7 +891,6 @@
   .matrix-corner--split {
     position: relative;
     height: var(--space-48);
-    background: var(--color-surface);
   }
 
   .corner-diagonal {
@@ -572,26 +923,41 @@
     right: var(--space-8);
   }
 
+  /* Row 2's own leading cell — the `minScore[end]` label. It no longer needs
+     `position: sticky` or its own `left` anchor at all: the left region is a
+     separate, non-scrolling table now, so this cell simply sits in normal
+     flow at the top of its column like any other header cell. The label's
+     subdued look comes from `color: var(--color-text-secondary)` (inherited
+     from the shared .matrix-corner/.matrix-head/.matrix-row-head/.matrix-minscore
+     rule above) — no `opacity` shortcut, which used to also fade this cell's
+     background and let a scrolled neighbour show through it before the
+     region split removed the possibility entirely. */
   .matrix-corner--sub {
     font-size: var(--text-13);
-    opacity: 0.75;
     padding: var(--space-4) var(--space-8);
   }
 
   .matrix-head {
-    top: 0;
     z-index: 1;
-    /* Fixed column width (96px, composed from tokens 64+32) reserved for the
-       widest content a data column will ever hold once fully revealed — a
-       "line² + rest" breakdown line such as "6400 + 7300" — so `table-layout:
-       fixed` never has to grow a column mid-run. */
-    width: calc(var(--space-64) + var(--space-32));
-    height: var(--space-24);
+    /* No `width` here, deliberately: under `table-layout: fixed`, a column
+       with no declared `width` absorbs an equal share of whatever space is
+       left over — that is the whole mechanism this column model relies on to
+       make the candidate columns fill the region exactly when there are
+       fewer than five, with no per-column width computed from the item count
+       in script. `min-width` is set inline from the measured region width
+       (`--candidate-min-w`, one fifth of the middle region's own clientWidth
+       — see candidateMinWidth in the script) rather than a fixed token here,
+       since "one fifth of this region's own width" is a fact about live
+       layout, not a constant. Reserved height (unaffected by this column's
+       width) is still the floor for "line² + rest" content such as
+       "6400 + 7300" — a column at or above its minimum width never has to
+       grow mid-run, because nothing here shrinks the column below what that
+       content needs once fixed layout has settled on a width. */
+    min-width: var(--candidate-min-w);
     border-bottom: 1px solid var(--color-hairline);
   }
 
   .matrix-minscore {
-    top: var(--space-24);
     z-index: 1;
     font-size: var(--text-13);
     color: var(--color-text);
@@ -600,27 +966,68 @@
 
   /* Trailing column's header cells stay blank/neutral — "settles at" already
      labels the column once, up in .matrix-head--settled; repeating a value in
-     both header rows of the same column would just be noise. */
+     both header rows of the same column would just be noise. Same reasoning
+     applies to the bestEnd[start] column beside it.
+
+     Neither column needs `position: sticky` any more: the right region is
+     its own non-scrolling table, standing still in the flex row alongside
+     the scrolling middle region rather than pinned to a scroll edge inside a
+     single shared table. */
   .matrix-head--settled,
-  .matrix-minscore--settled {
+  .matrix-minscore--settled,
+  .matrix-head--bestend,
+  .matrix-minscore--bestend {
     border-left: 1px solid var(--color-hairline);
   }
 
-  .matrix-row-head {
-    left: 0;
+  /* minScore[start]'s own fixed width. The header label above it,
+     `minScore[start]` inside a monospace `<code>` chip, measures ~150px
+     including the chip's own padding — wider than this column's settled-total
+     body content ever gets — and this header text cannot wrap (the two-row
+     header is a fixed-height box, see .matrix-head above; wrapping would grow
+     it and violate the same "geometry never grows once set" invariant the
+     body cells are built around). Widening the whole column to fit its own
+     label (narrower below ~480px, where the label's own `<code>` element is
+     hidden instead, see the visually-hidden rule further below) is the option
+     that keeps that invariant intact without shrinking or wrapping the label. */
+  .matrix-head--settled,
+  .matrix-minscore--settled {
+    width: calc(var(--space-64) + var(--space-64) + var(--space-24));
     z-index: 1;
-    width: calc(var(--space-64) + var(--space-32));
+  }
+
+  /* bestEnd[start]'s own fixed width. Its body values (a one- or two-digit
+     end index) need far less room than minScore[start]'s totals, but its
+     header label, `bestEnd[start]` in the same monospace chip, measures the
+     same ~150px the minScore[start] label does — column width is driven by
+     the wider of "widest body content" and "the header label", and here the
+     label wins, for the same wrap-would-grow-the-header-box reason explained
+     on .matrix-head--settled above. So this column ends up the same width as
+     that one despite holding narrower data — a deliberate consequence of the
+     fixed-height header constraint, not a copy-paste width. */
+  .matrix-head--bestend,
+  .matrix-minscore--bestend {
+    width: calc(var(--space-64) + var(--space-64) + var(--space-24));
+    z-index: 1;
+  }
+
+  .matrix-row-head {
+    width: 100%;
     border-right: 1px solid var(--color-hairline);
   }
 
   /* The row the stepper is currently deciding — ties the matrix to the stepper
-     panel below it so the two read as one connected view, not two side by side. */
+     panel below it so the two read as one connected view, not two side by side.
+     Applies identically in all three tables: each renders its own <tr> for the
+     same `start`, so the same class on the same row index tints all three at
+     once, keeping the highlight coherent across the region split. */
   .matrix-row--active .matrix-row-head {
     color: var(--color-accent);
   }
 
   .matrix-row--active .matrix-cell,
-  .matrix-row--active .matrix-cell--settled {
+  .matrix-row--active .matrix-cell--settled,
+  .matrix-row--active .matrix-cell--bestend {
     background: var(--color-accent-tint);
   }
 
@@ -633,6 +1040,35 @@
     padding: var(--space-8) var(--space-12);
     color: var(--color-text);
     border-top: 1px solid var(--color-hairline);
+    /* `middle`, not the table cell default of `baseline` — three independent
+       tables each resolve their own `<tr>` height from their own tallest
+       cell's baseline metrics, and a cell's baseline offset depends on its
+       own content's font ascent/descent, which is not identical between a
+       cell holding two stacked lines (a candidate's total+breakdown) and a
+       cell holding one centered line (the settled/bestend columns' single
+       value) even at the same font-size/line-height. Left at the default,
+       that per-cell baseline math added a different amount of extra space to
+       each table's own row, which is exactly the kind of drift this design's
+       shared `--row-h` is supposed to rule out — the three tables no longer
+       share a single `<tr>` to reconcile it for them automatically the way
+       one shared table used to. Forcing `middle` here removes baseline
+       geometry from the row-height calculation entirely, so `--row-h` (an
+       explicit `height` on every `<tr>`, see the template) is the only input
+       any of the three tables' rows can grow from. */
+    vertical-align: middle;
+    /* Clip at this cell's own box, never past it. `--candidate-min-w` (set
+       inline from the measured region width — see `candidateMinWidth` and
+       `decompositionFloorWidth` in the script) never sits below the widest
+       real decomposition text this run will render, so the two content lines
+       below (.matrix-cell-total / .matrix-cell-breakdown)
+       never need clipping of their own to fit inside this box — a clip on
+       the text itself once cut a value like "14400 + 40" out of what was
+       actually "14400 + 400", a truncated number that reads as a different,
+       wrong one. Widening the floor instead of clipping the content is the
+       fix; this box-level clip is now purely defensive (there is no scroll
+       seam left to bound, since the pinned columns are a separate table
+       entirely), never a bound the arithmetic itself has to fit inside. */
+    overflow: hidden;
     /* Reserved space for the two-line total+breakdown content (see
        .matrix-cell-total / .matrix-cell-breakdown below), so a cell claims the
        same box whether it's still blank or has just been revealed — filling in
@@ -654,7 +1090,14 @@
        of this cell's reserved content height forces the browser through the
        identical box math whether that line is empty or holds text — the
        placeholder below reserves two such lines too, so nothing here can ever
-       measure taller than what the empty state already claims. */
+       measure taller than what the empty state already claims.
+
+       `--row-h` (declared once per table from the same shared formula, see
+       the script) is set as an explicit height on every <tr> in all three
+       tables — this per-cell height stays as the floor that formula also
+       describes, so the two can never disagree even though only the <tr>
+       height is what actually keeps the three tables' rows level with each
+       other. */
     height: calc(var(--text-13) * var(--lh-body) * 2 + var(--space-8) * 2);
     transition: background-color 200ms ease-out, box-shadow 200ms ease-out;
   }
@@ -708,11 +1151,78 @@
 
   /* Produced value: the same number the header row shows in the column of the
      same index, now attached to the row that actually settles on it. Left
-     hairline separates it from the [start, end) grid it summarizes. */
+     hairline separates it from the [start, end) grid it summarizes. No longer
+     `position: sticky` — the right region is a separate, non-scrolling table,
+     so this cell simply needs its own opaque background like any ordinary
+     cell, with state colouring (the active-row tint, the settle-instant
+     accent flash) still winning the cascade by virtue of being declared after
+     this rule in the stylesheet. */
   .matrix-cell--settled {
-    border-left: 1px solid var(--color-hairline);
+    background: var(--color-surface);
     font-weight: 600;
     color: var(--color-text);
+  }
+
+  /* bestEnd[start]: an end INDEX, not a score, so it deliberately does not
+     borrow .matrix-cell--settled's bold/primary-text treatment — that look is
+     reserved for minScore's totals. Left hairline still separates it from the
+     grid, but the value itself renders at secondary-text weight/color, same as
+     the row-head index column on the left edge of the same row: same kind of
+     number (a coordinate into the item axis), same visual family, so the two
+     trailing columns read as "a score" and "an index" rather than two scores. */
+  .matrix-cell--bestend {
+    background: var(--color-surface);
+  }
+
+  /* Single-line content in the two trailing summary columns (minScore[start]'s
+     total, bestEnd[start]'s index) — given the exact same box math as the
+     candidate cells' two-line total+breakdown pair, rather than left to size
+     itself from a raw text node's natural line-height. Without this, these
+     cells' row was resolving a hair taller than the candidate/row-head rows
+     in the *other* two tables: three independent tables each auto-grow their
+     own `<tr>` to fit their own tallest cell, and a bare text node's natural
+     line box does not round to the exact same device-pixel height the
+     explicit two-line calc() below does, even at identical font-size and
+     line-height inputs — the one difference that matters once each table's
+     rows are no longer sharing a single `<tr>` to reconcile it for them (see
+     the note on `--row-h` in the script for why the three tables can't rely
+     on content agreeing by accident any more). Centered in the same reserved
+     two-line height every candidate cell reserves, so this cell's row can
+     never disagree with a candidate cell's row for the same start index. */
+  .matrix-cell-single {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: calc(var(--text-13) * var(--lh-body) * 2);
+    line-height: var(--lh-body);
+    font-size: var(--text-13);
+  }
+
+  .matrix-cell-bestend-value {
+    color: var(--color-text-secondary);
+    font-weight: 500;
+  }
+
+  /* Settle instant wins over the index's usual secondary-color treatment: the
+     same accent flash .matrix-cell--justsettled gives minScore/settled cells
+     must show here too, not get quietly overridden by the span's own color. */
+  .matrix-cell--justsettled .matrix-cell-bestend-value {
+    color: var(--color-accent);
+    font-weight: 600;
+  }
+
+  /* Makes the traceback's walk visible in this column too: once this row's
+     start is on the chosen path (the same fact .matrix-cell--chosen uses,
+     just read for this row's own bestEnd[start] value instead of a specific
+     grid cell), the index itself turns accent-colored — the reader can follow
+     the chain straight down this column during the backward pass instead of
+     only hunting for accent rings in the wide grid. No new ring/box-shadow
+     here (the grid cell for this exact (start, end) already carries that),
+     just the text color, so this stays a quiet echo, not a second copy of the
+     grid's chosen treatment. */
+  .matrix-cell--bestend-chosen .matrix-cell-bestend-value {
+    color: var(--color-accent);
+    font-weight: 600;
   }
 
   .matrix-cell-total {
@@ -720,6 +1230,13 @@
     line-height: var(--lh-body);
     font-size: var(--text-13);
     white-space: nowrap;
+    /* No `overflow: hidden` here on purpose: this line's own text — the
+       cell's total — always fits inside `--candidate-min-w`, since that
+       floor is measured directly from the widest real decomposition text
+       this run produces (see `decompositionFloorWidth` in the script), never a clip the arithmetic
+       itself has to fit inside: clipping a number is not an acceptable way to
+       fit content, since a truncated number reads as a different, wrong
+       number (e.g. what should be "14400 + 400" clipped to "14400 + 40"). */
   }
 
   .matrix-cell-breakdown {
@@ -729,6 +1246,10 @@
     color: var(--color-text-secondary);
     opacity: 0.7;
     white-space: nowrap;
+    /* Same reasoning as .matrix-cell-total above: this line — the
+       lineScore + memoValue breakdown — is the exact text the floor was
+       measured from, so it fits by construction, needing no clip of its
+       own. */
   }
 
   /* Structurally void cell (end <= start): same reserved box as any other body
@@ -854,5 +1375,45 @@
     height: calc(var(--text-13) * var(--lh-body) * 2);
     font-size: var(--text-15);
     color: var(--color-overflow);
+  }
+
+  /* Below ~480px, the right region's two columns at their full label-driven
+     width (152px + 152px = 304px) plus the left region (152px) leave little
+     to no room for even a sliver of the middle region in the flex row — every
+     region here has a fixed width except the middle one, so the middle region
+     is what absorbs the shortfall (shrinking toward, and eventually below,
+     its own five-column floor and scrolling), never the fixed regions giving
+     up their own width. The actual mitigation is narrowing the two right
+     columns back down near their number content's real width, freeing space
+     for the middle region to stay usable. Their header labels no longer fit
+     at this width alongside a chip: each label's `<code>` element (see markup
+     above and the visually-hidden rule below) is hidden visually only,
+     staying in the accessibility tree, at this breakpoint. */
+  @media (max-width: 480px) {
+    .matrix-head--settled,
+    .matrix-minscore--settled,
+    .matrix-head--bestend,
+    .matrix-minscore--bestend {
+      width: calc(var(--space-48) + var(--space-16));
+    }
+
+    /* The label itself, not just its column, has to give way at this width:
+       `minScore[start]` and `bestEnd[start]` both measure wider than even
+       the roomier 152px column did (see the width comment above), so simply
+       narrowing the column back down would clip the very text it holds.
+       Standard visually-hidden clipping (off-screen, not `display: none`)
+       keeps the label in the accessibility tree — a screen reader still
+       announces the column's name — while removing it from the visual box
+       entirely, so `table-layout: fixed` has no text to fit at all and the
+       column can shrink to its number content's real width instead. */
+    .matrix-head--settled code,
+    .matrix-head--bestend code {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+    }
   }
 </style>
