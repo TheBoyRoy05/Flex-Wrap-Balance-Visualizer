@@ -1,6 +1,6 @@
 # flex-wrap: balance
 
-An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap: balance`, mirroring the implementation in [WebKit](https://github.com/WebKit/WebKit/blob/74efecb8e0d1e43dea71093f25a1aab4ec9383ff/Source/WebCore/layout/formattingContexts/flex/FlexLineBreaker.cpp). Background: [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance).
+An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap: balance`, mirroring the implementation in [WebKit](https://github.com/WebKit/WebKit/blob/74efecb8e0d1e43dea71093f25a1aab4ec9383ff/Source/WebCore/layout/formattingContexts/flex/FlexLineBreaker.cpp). View on tablet screen or larger for best experience.
 
 ![Hero](/src/assets/hero.png)
 
@@ -28,13 +28,13 @@ def greedyLineBreaks(itemSizes: List[int], capacity: int, gap: int) -> List[int]
 
 With both greedy and balanced, the input is item sizes, capacity, and gap and the output is a list of indices where each line ends. In the above example, this would be `[3, 4, 5]` for greedy and `[2, 4, 5]` for balanced.
 
-The logic for the greedy algorithm is fairly straightforward: keep adding items to a line until the line overflows. The only non-trivial bit is `not firstItem`. This is to follow the rule that each line has at least one item, even if it's bigger than capacity. Otherwise, if the next item overflows, move to the next row.
+The logic for the greedy algorithm is fairly straightforward: keep adding items to a line until the line overflows. The only non-trivial bit is `not firstItem`. This is to follow the rule that each line has at least one item, even if it's bigger than capacity. Otherwise, if the next item overflows, move to the next line.
 
 ## The Core Balance Algorithm
 
-The goal of balancing items is to homogenize the free space. To achieve this, we aim to minimize the following "score":
+The goal of balancing items is to homogenize the free space. To achieve this, we aim to minimize the following score:
 
-$$\min \sum_{line} \texttt{freeSpace}[\texttt{line.start}, \texttt{line.end})^2$$
+$$\min \sum_{\texttt{lines}} \texttt{freeSpace}[\texttt{line.start}, \texttt{line.end})^2$$
 
 Where $\texttt{start}$ and $\texttt{end}$ are both indices with $\texttt{start}$ being inclusive and $\texttt{end}$ being exclusive
 
@@ -72,7 +72,7 @@ With this, we have found the best line breaks which minimize the sum of the squa
 
   $$\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \max\left(0,\ \texttt{capacity} - (\texttt{prefixSum}[\texttt{end}] - \texttt{prefixSum}[\texttt{start}] - \texttt{gap})\right)$$
 
-- When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediately and mark the rest of the row as impossible. This is because all item sizes are non-negative so we'll stay above capacity with more items.
+- When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediately and mark the rest as impossible. This is because all item sizes are non-negative so we'll stay above capacity with more items.
 
   With this, we can further decrease our time complexity to $O(n * L)$ where $L$ is the average line length. In the typical case, $L << n$ and hence, we can typically achieve near $O(n)$, down from the $O(2^n)$ of brute force. Incredible!
 
