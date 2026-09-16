@@ -1,114 +1,37 @@
 {
-  "name": "autopilot-safe",
-  "description": "Autopilot with guardrails: reads/searches/builds run without prompts, destructive shell/writes are blocked or still confirmed, subagent dispatch to trusted agents is auto-approved.",
-  "allowedTools": [
-    "read",
-    "grep",
-    "glob",
-    "code",
-    "knowledge",
-    "introspect",
-    "goal",
-    "todo_list"
-  ],
-  "tools": [
-    "read",
-    "write",
-    "shell",
-    "grep",
-    "glob",
-    "code",
-    "knowledge",
-    "introspect",
-    "goal",
-    "todo_list",
-    "subagent",
-    "@playwright"
-  ],
-  "mcpServers": {
-    "playwright": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@playwright/mcp@latest",
-        "--headless",
-        "--isolated",
-        "--output-dir",
-        ".screenshots"
-      ]
+  "name" : "autopilot-safe",
+  "description" : "Autopilot with guardrails: reads/searches/builds run without prompts, destructive shell/writes are blocked or still confirmed, subagent dispatch to trusted agents is auto-approved.",
+  "allowedTools" : [ "read", "grep", "glob", "code", "knowledge", "introspect", "goal", "todo_list", "@creds-agent" ],
+  "tools" : [ "read", "write", "shell", "grep", "glob", "code", "knowledge", "introspect", "goal", "todo_list", "subagent", "@playwright", "@creds-agent" ],
+  "mcpServers" : {
+    "playwright" : {
+      "command" : "npx",
+      "args" : [ "-y", "@playwright/mcp@latest", "--headless", "--isolated", "--output-dir", ".screenshots" ]
+    },
+    "creds-agent" : {
+      "command" : "aim",
+      "args" : [ "mcp", "start-server", "local-creds-agent-mcp" ]
     }
   },
-  "resources": [
-    "file://~/.kiro/steering/**/*.md",
-    "file://.kiro/steering/**/*.md"
-  ],
-  "toolsSettings": {
-    "shell": {
-      "autoAllowReadonly": true,
-      "allowedCommands": [
-        "git status",
-        "git diff.*",
-        "git log.*",
-        "git branch.*",
-        "git show.*",
-        "npm run build",
-        "npm test",
-        "npm run lint",
-        "npm ci",
-        "npm install"
-      ],
-      "deniedCommands": [
-        "rm -rf.*",
-        "sudo.*",
-        "git push --force.*",
-        "git push -f.*",
-        "git reset --hard.*",
-        "git clean -f.*",
-        "git branch -D.*"
-      ]
+  "resources" : [ "file://~/.kiro/steering/**/*.md", "file://.kiro/steering/**/*.md" ],
+  "toolsSettings" : {
+    "shell" : {
+      "autoAllowReadonly" : true,
+      "allowedCommands" : [ "git status", "git diff.*", "git log.*", "git branch.*", "git show.*", "npm run build", "npm test", "npm run lint", "npm ci", "npm install" ],
+      "deniedCommands" : [ "rm -rf.*", "sudo.*", "git push --force.*", "git push -f.*", "git reset --hard.*", "git clean -f.*", "git branch -D.*" ]
     },
-    "write": {
-      "allowedPaths": [
-        "src/**",
-        "tests/**",
-        "public/**",
-        "*.json",
-        "*.md",
-        "*.ts",
-        "*.svelte",
-        "*.js",
-        "*.css"
-      ],
-      "deniedPaths": [
-        "*.env",
-        "*.pem",
-        "*.key",
-        ".git/**",
-        "node_modules/**"
-      ]
+    "write" : {
+      "allowedPaths" : [ "src/**", "tests/**", "public/**", "*.json", "*.md", "*.ts", "*.svelte", "*.js", "*.css" ],
+      "deniedPaths" : [ "*.env", "*.pem", "*.key", ".git/**", "node_modules/**" ]
     },
-    "crew": {
-      "availableAgents": [
-        "locate",
-        "mechanical",
-        "deadcode",
-        "ux-advocate",
-        "svelte-expert"
-      ],
-      "trustedAgents": [
-        "locate",
-        "mechanical",
-        "deadcode",
-        "ux-advocate",
-        "svelte-expert"
-      ]
+    "crew" : {
+      "availableAgents" : [ "locate", "mechanical", "deadcode", "ux-advocate", "svelte-expert" ],
+      "trustedAgents" : [ "locate", "mechanical", "deadcode", "ux-advocate", "svelte-expert" ]
     }
   },
-  "hooks": {
-    "userPromptSubmit": [
-      {
-        "command": "echo 'Reminders: (1) respond in caveman style — terse, drop articles/filler, keep technical accuracy. (2) You are the PM: delegate implementation/investigation/review to subagents (locate=haiku search, mechanical=haiku bounded edit, deadcode=sonnet orphan cleanup, ux-advocate=sonnet UX critique, svelte-expert=sonnet Svelte). Always pass model explicitly. Keep design, decisions, reporting, commits inline.'"
-      }
-    ]
+  "hooks" : {
+    "userPromptSubmit" : [ {
+      "command" : "echo 'Reminders: (1) respond in caveman style — terse, drop articles/filler, keep technical accuracy. (2) You are the PM: delegate implementation/investigation/review to subagents (locate=haiku search, mechanical=haiku bounded edit, deadcode=sonnet orphan cleanup, ux-advocate=sonnet UX critique, svelte-expert=sonnet Svelte). Always pass model explicitly. Keep design, decisions, reporting, commits inline.'"
+    } ]
   }
 }

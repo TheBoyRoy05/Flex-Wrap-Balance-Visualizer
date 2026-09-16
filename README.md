@@ -26,7 +26,7 @@ def greedyLineBreaks(itemSizes: List[int], capacity: int, gap: int) -> List[int]
   return lineBreaks
 ```
 
-With both greedy and , take in the item sizes, capacity, and gap and output a list of indices where each line ends. In the above example, this would be `[3, 4, 5]` for greedy and `[2, 4, 5]` for balanced.
+With both greedy and balanced, the input is item sizes, capacity, and gap and the output is a list of indices where each line ends. In the above example, this would be `[3, 4, 5]` for greedy and `[2, 4, 5]` for balanced.
 
 The logic for the greedy algorithm is fairly straightforward: keep adding items to a line until the line overflows. The only non-trivial bit is `not firstItem`. This is to follow the rule that each line has at least one item, even if it's bigger than capacity. Otherwise, if the next item overflows, move to the next row.
 
@@ -60,7 +60,7 @@ We also store $\texttt{bestEnd}[\texttt{start}]$ as the last $\texttt{end}$ whic
 
 Now we recursively look at the best line ends starting at $\texttt{start} = 0$ and updating it with $\texttt{start} = \texttt{bestEnd}[\texttt{start}]$ and adding it to our resulting list of line starts.
 
-With this, we have found the best line breaks which minimizes the sum of the squares of free space, hence achieving a balanced solution.
+With this, we have found the best line breaks which minimize the sum of the squares of free space, hence achieving a balanced solution.
 
 ### Optimizations
 
