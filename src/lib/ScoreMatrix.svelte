@@ -519,7 +519,13 @@
               bind:this={indexColEl}
               style={`height: ${headRowOneHeight}`}
             >
-              <span class="corner-axes">start \ end</span>
+              <div class="corner-split-inner">
+                <svg class="corner-diagonal" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  <line x1="0" y1="0" x2="100" y2="100" />
+                </svg>
+                <span class="corner-label corner-label--start">start</span>
+                <span class="corner-label corner-label--end">end</span>
+              </div>
             </th>
             {#each cols as end (end)}
               <th class="matrix-head tnum" style={`height: ${headRowOneHeight}`}>{end}</th>
@@ -936,7 +942,7 @@
     font-weight: 500;
     color: var(--color-text-secondary);
     background: var(--color-surface);
-    padding: var(--space-8);
+    /* padding: var(--space-8); */
     /* Same reasoning as `.matrix-cell`'s own `vertical-align: middle` below:
        the header/row-head rows must not resolve to a different height from
        each cell's own baseline metrics — the flex summary block's rows are
@@ -971,17 +977,46 @@
     height: var(--space-48);
   }
 
-  /* One label naming both axes, rather than a drawn diagonal with a label in
-     each triangle. This cell is 152px wide and 48px tall, so a corner-to-corner
-     diagonal is shallow enough that both labels sit at almost the same height,
-     crowding the line they are supposed to be separated by. The backslash says
-     the same thing in the space available. */
-  .corner-axes {
-    display: block;
+  /* The diagonal's positioning context lives on this inner div, never on the
+     `<th>`: that cell carries `.matrix-sticky-col` (`position: sticky`), and a
+     `<th>` can only have one `position` value, so `relative` here would win
+     the cascade and silently un-pin this one cell. */
+  .corner-split-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+
+  .corner-diagonal {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .corner-diagonal line {
+    stroke: var(--color-hairline);
+    stroke-width: 1px;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .corner-label {
+    position: absolute;
     font-size: var(--text-13);
     font-weight: 500;
     color: var(--color-text-secondary);
-    white-space: nowrap;
+  }
+
+  /* start labels the row axis, so it sits below the diagonal; end labels the
+     column axis, so it sits above it. */
+  .corner-label--start {
+    bottom: var(--space-4);
+    left: var(--space-8);
+  }
+
+  .corner-label--end {
+    top: var(--space-4);
+    right: var(--space-8);
   }
 
   /* Row 2's own leading cell — the `minScore[end]` label. Opaque background
@@ -1037,11 +1072,15 @@
      widths for different rows under `table-layout: fixed`. */
   .matrix-corner,
   .matrix-corner--sub,
+  /* The row separator has to be declared here too. Under
+     `border-collapse: separate` no border is shared between neighbours, so a
+     candidate cell's own `border-top` stops at its own box and cannot draw the
+     rule across this column — the index column looked unruled while every
+     other column was separated. Same 1px hairline, same edge, so rows stay the
+     height the shared `--row-h` expects. */
   .matrix-row-head {
     width: calc(var(--space-64) + var(--space-64) + var(--space-24));
-  }
-
-  .matrix-row-head {
+    border-top: 1px solid var(--color-hairline);
     border-right: 1px solid var(--color-hairline);
   }
 
