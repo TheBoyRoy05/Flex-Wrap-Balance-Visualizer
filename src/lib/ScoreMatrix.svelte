@@ -786,7 +786,10 @@
   .matrix-panel-body {
     display: flex;
     align-items: stretch;
-    border: 1px solid var(--color-hairline);
+    /* Thicker than the hairlines inside it, so the matrix reads as one framed
+       object rather than a grid that happens to stop. Composed from a spacing
+       token to stay on the scale. */
+    border: calc(var(--space-8) / 4) solid var(--color-hairline);
     border-radius: var(--radius-10);
     overflow: hidden;
   }
