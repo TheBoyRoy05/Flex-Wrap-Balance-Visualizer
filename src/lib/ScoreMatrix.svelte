@@ -914,8 +914,12 @@
     border-left: 1px solid var(--color-hairline);
   }
 
+  /* Keeps its left border, unlike the table cells' first-column exception: this
+     edge is the seam between the scrolling candidates and the fixed summary,
+     and nothing else draws it. The summary block sits outside the scroller, so
+     the line is static and cannot double against a scrolling neighbour. */
   .matrix-summary-col--settled {
-    border-left: none;
+    border-left: 1px solid var(--color-hairline);
   }
 
   .matrix-summary-head {
@@ -1040,6 +1044,10 @@
   .matrix-corner--sub {
     font-size: var(--text-13);
     padding: var(--space-4) var(--space-8);
+    /* This cell carries `--sub` but not the base `.matrix-corner` class, so it
+       does not inherit that rule's right edge, and the index column's own
+       border stopped for exactly one row. */
+    border-right: 1px solid var(--color-hairline);
   }
 
   .matrix-head {
