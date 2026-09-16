@@ -1770,13 +1770,33 @@
       border-left: 1px solid var(--color-hairline);
     }
 
-    /* 40px of column cannot hold two words and a diagonal: at this width the
-       labels stacked into a two-line blur and the diagonal was invisible
-       behind them. The end indices along the top and the start indices down
-       the side still say which axis is which, and the spanning
-       `minScore[end]` label names the row beneath it. */
-    .corner-label {
+    /* The diagonal is what could not fit 40px, not the words: `end` renders
+       23px and `start` 29px, both inside the column. What broke was two
+       absolutely positioned labels and a diagonal competing for one 40x48
+       cell. So drop the diagonal here and set the two words as ordinary
+       stacked lines — `end` above, naming the columns, `start` below, naming
+       the rows, in the same order they appear on the axes. */
+    .corner-diagonal {
       display: none;
+    }
+
+    .corner-split-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+    }
+
+    .corner-label {
+      position: static;
+    }
+
+    .corner-label--end {
+      order: 1;
+    }
+
+    .corner-label--start {
+      order: 2;
     }
 
     /* Both labels stack inside the table's one remaining header row (row 2,

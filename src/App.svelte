@@ -18,18 +18,22 @@
   );
 </script>
 
+{#snippet algorithmLink()}
+  <a
+    class="algorithm-link"
+    href="https://github.com/TheBoyRoy05/Flex-Wrap-Balance-Visualizer#the-algorithm"
+    target="_blank"
+    rel="noopener noreferrer"
+  >
+    Read More Here ↗
+  </a>
+{/snippet}
+
 <main class="page">
   <header class="measure header">
     <span class="eyebrow">flex-wrap: balance</span>
     <h1>Score Matrix Visualizer</h1>
-    <a
-      class="algorithm-link"
-      href="https://github.com/TheBoyRoy05/Flex-Wrap-Balance-Visualizer#the-algorithm"
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      The Algorithm ↗
-    </a>
+    {@render algorithmLink()}
   </header>
 
   <div class="measure">
@@ -44,6 +48,13 @@
     <ScoreMatrix {activeStart}>
       <DpStepper />
     </ScoreMatrix>
+  </div>
+
+  <!-- Second call site: a reader who has just watched the run end is exactly
+       the one who wants the written explanation, and by then the header is far
+       above them. -->
+  <div class="measure">
+    {@render algorithmLink()}
   </div>
 </main>
 
