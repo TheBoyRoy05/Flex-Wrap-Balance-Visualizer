@@ -4,7 +4,7 @@ An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap:
 
 ![Hero](/src/assets/hero.png)
 
-## The Greedy Algorithm (flex-wrap: wrap)
+## [The Greedy Algorithm](https://drafts.csswg.org/css-flexbox-2/#layout-algorithm) (flex-wrap: wrap)
 
 ```python
 def greedyLineBreaks(itemSizes: List[int], capacity: int, gap: int) -> List[int]
@@ -76,4 +76,11 @@ With this, we have found the best line breaks which minimize the sum of the squa
 
   With this, we can further decrease our time complexity to $O(n * L)$ where $L$ is the average line length. In the typical case, $L << n$ and hence, we can typically achieve near $O(n)$, down from the $O(2^n)$ of brute force. Incredible!
 
-See the [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance) for more details.
+## Other Interactions
+
+### [flex-line-count]((https://drafts.csswg.org/css-flexbox-2/#flex-line-count-property))
+The CSS Specification also calls for this new CSS property in tandem with `flex-wrap: balance` which specifies the minimum number of lines that the items should occupy while also being balanced.
+
+This adds an extra dimension to the Dynamic Programming Algorithm that's not captured by this visualizer because now we must find the most balanced solution across 
+
+$$\texttt{numLines} \in [\min(\texttt{flex-line-count},\ \texttt{numItems}),\ \texttt{numItems}]$$

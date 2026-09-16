@@ -306,4 +306,43 @@
   .stepper-settle strong {
     color: var(--color-text);
   }
+
+  /* Below the tablet floor the five controls no longer fit one line, and left
+     to wrap they stranded `Fill all` alone on a second row. A fixed grid
+     instead: the three stepping controls share the first row, and the two
+     jumps-to-an-end share the second, which is the pairing they already have
+     in meaning. Deterministic at every narrow width, rather than depending on
+     where the text happens to break. */
+  @media (max-width: 767px) {
+    .stepper-controls {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      row-gap: var(--space-8);
+    }
+
+    .stepper-controls > :nth-child(2) {
+      grid-area: 1 / 1 / 2 / 2;
+    }
+
+    .stepper-controls > :nth-child(3) {
+      grid-area: 1 / 2 / 2 / 3;
+    }
+
+    .stepper-controls > :nth-child(4) {
+      grid-area: 1 / 3 / 2 / 4;
+    }
+
+    .stepper-controls > :nth-child(1) {
+      grid-area: 2 / 1 / 3 / 3;
+    }
+
+    .stepper-controls > :nth-child(5) {
+      grid-area: 2 / 3 / 3 / 4;
+    }
+
+    .stepper-progress {
+      grid-area: 3 / 1 / 4 / 4;
+      text-align: right;
+    }
+  }
 </style>

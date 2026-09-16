@@ -4,6 +4,7 @@
   // when inputs change, never mutate directly.
   import { balanceState } from './state.svelte';
   import { lastFittingEnd, isOverflowingLine } from './balance';
+  import { tick } from 'svelte';
 
   const n = $derived(balanceState.sizes.length);
   // Row order mirrors computation order: the suffix DP resolves start = n-1 first
@@ -311,6 +312,22 @@
   // flex block's own second header row (see the template).
   const headRowTwoHeight = 'calc(var(--space-24) + var(--space-12))';
 
+  // The narrow-only spanning `minScore[end]` label row's own height (see
+  // `.matrix-memo-label-row`/`.matrix-memo-label` in the template/stylesheet):
+  // one line of `--text-13` content plus `--space-4` padding top and bottom,
+  // plus the 1px `border-bottom` that row draws — the same "content + padding
+  // + border" accounting `rowHeight` above uses for the table's body rows,
+  // sized for this row's actual (shorter, single-line) content instead. The
+  // `+ 1px` term is the same table-cell-specific correction `rowHeight`
+  // documents above: a `<th>`'s declared `height` is a minimum content-box
+  // target, and its own border renders in addition to that target rather
+  // than being carved out of it, so the row measured 1px taller than the
+  // bare content+padding+border sum until this term was added. The narrow
+  // summary block's blank second header box (see the template) reads this
+  // same constant so it reserves exactly the height this row adds, rather
+  // than a guess that could drift from it.
+  const labelRowHeight = `calc(var(--text-13) * var(--lh-body) + var(--space-4) * 2 + 1px + 1px)`;
+
   // The scroll container's candidate columns must each hold at least one
   // fifth of the *candidate* space — the part of the container's width left
   // over once the sticky index column's own width is set aside, since that
@@ -377,6 +394,13 @@
   // columns' worth — an explicit, verified tradeoff for narrow viewports, not
   // a silent one.
   let decompositionFloorWidth = $state(0);
+  // Below 768px the probe measures `widestTotalText`, not
+  // `widestDecompositionText` (see the template's probe element and
+  // `isNarrow` above) — so this same variable holds "the widest text a cell
+  // currently renders" at either width, not always the two-part breakdown its
+  // name describes at the wide layout. Not renamed throughout, since the
+  // floor's role (a live-measured minimum column width) is identical at both
+  // widths; only which text it is measured from changes.
   const candidateMinWidth = $derived(Math.max(middleRegionWidth / 5, decompositionFloorWidth));
 
   // The widest decomposition text ("lineScore + memoValue") this run will ever
@@ -406,6 +430,52 @@
     return widest;
   });
 
+  // Below 768px the cell's breakdown line (lineScore + memoValue) is hidden —
+  // see the media query in the template's stylesheet — and only the total
+  // itself has to fit the column. Reusing `widestDecompositionText`'s much
+  // wider floor at this width would still reserve room for text nothing ever
+  // renders, undermining the whole point of hiding it (fitting more candidate
+  // columns in the same space). This is the total-only counterpart: the
+  // widest bare total this run will ever reveal, same "known up front from
+  // the full matrix, not from playback progress" reasoning as above.
+  const widestTotalText = $derived.by(() => {
+    let widest = '';
+    const { score, minScores } = balanceState.result;
+    for (let start = 0; start < n; start++) {
+      for (let end = start + 1; end <= fittingEnd[start]; end++) {
+        if (isOverflowingLine(len, start, end, balanceState.capacity)) continue;
+        const lineScore = score[start][end];
+        const memoValue = minScores[end];
+        if (lineScore == null || memoValue == null) continue;
+        const text = String(lineScore + memoValue);
+        if (text.length > widest.length) widest = text;
+      }
+    }
+    return widest;
+  });
+
+  // Tracks the same 767px boundary the stylesheet's `@media (max-width: 767px)`
+  // block uses, so the script's own floor-selection logic (see
+  // `decompositionFloorWidth`'s effect below) never disagrees with which
+  // layout the CSS is actually showing. A `matchMedia` listener, not a
+  // measured-pixel guess from `panelEl`'s own width, because the panel sits
+  // inside `.measure`'s gutter padding (see app.css) — the panel's own box
+  // width is not the viewport width, so re-deriving the breakpoint from it
+  // would drift from the CSS breakpoint by the gutter's width. Genuine
+  // external state (the browser's own media-query match, not a value this
+  // component computes), so `$state` set from a listener, not `$derived`.
+  let isNarrow = $state(false);
+
+  $effect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    isNarrow = mq.matches;
+    const handler = (e: MediaQueryListEvent) => {
+      isNarrow = e.matches;
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  });
+
   // Offscreen probe element, styled identically to `.matrix-cell-breakdown`
   // (same font/size/tabular-nums — see the template, `class="tnum"` on the
   // probe and `font-size: var(--text-13)` in its style block below), used
@@ -418,11 +488,34 @@
 
   $effect(() => {
     if (!probeEl) return;
-    // Padding matches `.matrix-cell`'s own space-12 each side, so the
-    // measured width already includes the padding the real cell reserves —
-    // `decompositionFloorWidth` below is then a direct column-width floor,
-    // not a bare text width the caller has to remember to pad separately.
-    decompositionFloorWidth = probeEl.getBoundingClientRect().width;
+    // Explicit reactive reads: an `$effect` only re-runs when a *reactive*
+    // value it read last time changes, and `probeEl.getBoundingClientRect()`
+    // is a plain DOM call, invisible to that tracking. Reading `isNarrow`,
+    // `widestTotalText`, and `widestDecompositionText` here — even though
+    // the actual text is set via the template, not by this effect — is what
+    // makes the effect re-run (and re-measure) when any of the three change:
+    // crossing the 768px boundary, or the sizes/capacity/gap inputs producing
+    // a new widest string at the current width.
+    isNarrow;
+    widestTotalText;
+    widestDecompositionText;
+    // Deferred one microtask via `tick()`: this effect can run in the same
+    // flush as the state write that changed the probe's own text (e.g.
+    // `isNarrow` flipping on first mount at a narrow viewport), and reading
+    // `getBoundingClientRect()` synchronously in that case can observe the
+    // DOM before Svelte has applied the corresponding text update to
+    // `probeEl` — measuring the previous string's width instead of the
+    // current one. `tick()` resolves once pending component updates have
+    // been applied to the DOM, so the measurement below is guaranteed to see
+    // the text this same effect run actually depends on.
+    tick().then(() => {
+      if (!probeEl) return;
+      // Padding matches `.matrix-cell`'s own space-12 each side, so the
+      // measured width already includes the padding the real cell reserves —
+      // `decompositionFloorWidth` below is then a direct column-width floor,
+      // not a bare text width the caller has to remember to pad separately.
+      decompositionFloorWidth = probeEl.getBoundingClientRect().width;
+    });
   });
 
   function updateMiddleWidth() {
@@ -438,9 +531,14 @@
   // computed guess at column count × column width). A ResizeObserver on the
   // outer row also covers the viewport-resize case (768px/375px breakpoints),
   // since the region's own width changes there without any Svelte state
-  // changing on its own to retrigger this effect.
+  // changing on its own to retrigger this effect. `isNarrow` is read
+  // explicitly too: crossing 768px swaps which summary block is in the DOM
+  // (see `.matrix-summary-wide`/`.matrix-summary-narrow`), which changes
+  // `summaryEl`'s own rendered width — the ResizeObserver below watches
+  // `panelEl`, not `summaryEl`, so it would not by itself notice that change.
   $effect(() => {
     n;
+    isNarrow;
     updateMiddleWidth();
   });
 
@@ -450,6 +548,30 @@
       updateMiddleWidth();
     });
     observer.observe(panelEl);
+    return () => observer.disconnect();
+  });
+
+  // `panelEl`'s own box does not necessarily resize when the 768px breakpoint
+  // flips — it is a flex child sized by its parent, and the narrow/wide swap
+  // only changes its children's widths (the summary block shrinks from two
+  // 152px columns to one 80px column; the sticky index column shrinks from
+  // 152px to 40px). A direct load at a narrow viewport hits exactly this
+  // gap: the `isNarrow` effect above fires and calls `updateMiddleWidth()`
+  // once, but that call can land in the same paint as the state write, before
+  // the browser has applied the new `@media` layout to `summaryEl`/
+  // `indexColEl` — so it reads their still-wide rects and this component's
+  // own `--candidate-min-w` floor is computed from a `middleRegionWidth` that
+  // is too small. Observing these two elements directly (rather than only
+  // their shared ancestor) means their own post-layout size change is what
+  // triggers the next `updateMiddleWidth()` call, closing that gap without
+  // guessing at a fixed delay.
+  $effect(() => {
+    if (!summaryEl || !indexColEl) return;
+    const observer = new ResizeObserver(() => {
+      updateMiddleWidth();
+    });
+    observer.observe(summaryEl);
+    observer.observe(indexColEl);
     return () => observer.disconnect();
   });
 </script>
@@ -475,7 +597,7 @@
     </span>
   </div>
 
-  <div class="matrix-width-probe tnum" aria-hidden="true" bind:this={probeEl}>{widestDecompositionText}</div>
+  <div class="matrix-width-probe tnum" aria-hidden="true" bind:this={probeEl}>{isNarrow ? widestTotalText : widestDecompositionText}</div>
 
   <div class="matrix-panel-body" bind:this={panelEl} style={`--row-h: ${rowHeight}`}>
     <!-- SCROLL: the one scrollable element. Row index column (sticky left),
@@ -510,8 +632,36 @@
               <th class="matrix-head tnum" style={`height: ${headRowOneHeight}`}>{end}</th>
             {/each}
           </tr>
-          <tr style={`height: ${headRowTwoHeight}`}>
-            <th class="matrix-corner--sub matrix-sticky-col tnum" style={`height: ${headRowTwoHeight}`}><code>minScore[end]</code></th>
+          <!-- Narrow-only spanning label row: the same `minScore[end]` label
+               the sticky sub-corner cell holds at >=768px, promoted to its own
+               full-width row immediately above the memo values below 768px.
+               Reads `isNarrow` (the same script state the width probe and the
+               summary swap already key off, mirroring the CSS's own 767px
+               breakpoint) rather than existing purely as a CSS display swap,
+               so the label's presence here and its absence from the memo
+               row's own leading cell below can never drift out of sync with
+               each other or with which layout is actually showing. `colspan`
+               spans the sticky index column plus every candidate column, so
+               the label reads as captioning the whole row of values beneath
+               it, not as a stray heading floating above just the candidates. -->
+          {#if isNarrow}
+            <tr class="matrix-memo-label-row">
+              <th class="matrix-memo-label tnum" colspan={n + 1} style={`height: ${labelRowHeight}`}><code>minScore[end]</code></th>
+            </tr>
+          {/if}
+          <tr class="matrix-memo-row" style={`height: ${headRowTwoHeight}`}>
+            <th class="matrix-corner--sub matrix-sticky-col tnum" style={`height: ${headRowTwoHeight}`}>
+              <!-- Desktop keeps the label beside its values, exactly as
+                   before. Narrow moves it to the spanning row above (see
+                   `.matrix-memo-label-row` just above), so this cell goes
+                   empty instead of duplicating the text — and, critically,
+                   empty is all this cell needs to hold: with no `<code>`
+                   chip inside, the sticky column's width floor (set on
+                   `.matrix-sticky-col`/`.matrix-row-head`, media-queried down
+                   to 40px below 768px) is never fought by this cell's own
+                   content the way the 152px-wide label text used to fight it. -->
+              {#if !isNarrow}<code>minScore[end]</code>{/if}
+            </th>
             {#each cols as end (end)}
               {@const memoJustSettled = justSettledMemo(end)}
               {@const memoReading = isReadingMemo(end)}
@@ -587,49 +737,105 @@
       </table>
     </div>
 
-    <!-- SUMMARY: fixed width, never scrolls, not a table — minScore[start] and
-         bestEnd[start] are two plain per-row values, so a flex column per
-         field (rather than a flex row per record) is the shape used here: it
-         keeps each field's own header directly above its own column of
-         values, matching how the scrolling table reads (one header row,
-         then a value per record below it), and needs no per-row wrapper
-         element the flex-row-per-record shape would otherwise add. -->
+    <!-- SUMMARY: fixed width, never scrolls, not a table. Two real layouts live
+         here, not one, because "one column, values stacked" and "two columns,
+         values side by side" are different numbers of boxes per row — a
+         header cell either labels one field per column (desktop) or both
+         fields stacked in front of one column (narrow) — not a CSS
+         reflow of the same nodes. A single-structure version was tried first
+         (CSS Grid, both fields pinned to the same grid column and column-row
+         at narrow width, top/bottom-anchored within one shared cell) but it
+         needs one explicit `grid-row` per index, up to MAX_ITEMS rows, which
+         is more fragile than two small `{#each}` blocks and buys nothing a
+         reader can see. The two blocks below render the exact same
+         `rows`/`liveSettled`/`runningBestEndAtStep` data the single-layout
+         version did; only which one is present in the DOM changes, gated by
+         a matching `@media` boundary in the stylesheet, so the two can never
+         show at once and never drift apart in what they read from state. -->
     <div class="matrix-summary" bind:this={summaryEl}>
-      <div class="matrix-summary-col matrix-summary-col--settled">
-        <div class="matrix-summary-head" style={`height: ${headRowOneHeight}`}><code>minScore[start]</code></div>
-        <div class="matrix-summary-head matrix-summary-head--sub" style={`height: ${headRowTwoHeight}`}></div>
-        {#each rows as start (start)}
-          <div
-            class={['matrix-summary-cell', 'tnum', justSettledMemo(start) && 'matrix-summary-cell--justsettled']}
-            class:matrix-row--active={start === activeStart}
-            style={`height: var(--row-h)`}
-          >
-            {#if liveSettled[start] != null}
-              {fmtLive(liveSettled[start])}
-            {/if}
-          </div>
-        {/each}
+      <div class="matrix-summary-wide">
+        <div class="matrix-summary-col matrix-summary-col--settled">
+          <div class="matrix-summary-head" style={`height: ${headRowOneHeight}`}><code>minScore[start]</code></div>
+          <div class="matrix-summary-head matrix-summary-head--sub" style={`height: ${headRowTwoHeight}`}></div>
+          {#each rows as start (start)}
+            <div
+              class={['matrix-summary-cell', 'tnum', justSettledMemo(start) && 'matrix-summary-cell--justsettled']}
+              class:matrix-row--active={start === activeStart}
+              style={`height: var(--row-h)`}
+            >
+              {#if liveSettled[start] != null}
+                {fmtLive(liveSettled[start])}
+              {/if}
+            </div>
+          {/each}
+        </div>
+        <div class="matrix-summary-col matrix-summary-col--bestend">
+          <div class="matrix-summary-head" style={`height: ${headRowOneHeight}`}><code>bestEnd[start]</code></div>
+          <div class="matrix-summary-head matrix-summary-head--sub" style={`height: ${headRowTwoHeight}`}></div>
+          {#each rows as start (start)}
+            {@const runningEnd = runningBestEndAtStep.get(start)}
+            {@const bestEndChosen = runningEnd != null && isChosen(start, runningEnd)}
+            <div
+              class={[
+                'matrix-summary-cell',
+                'matrix-summary-cell--bestend',
+                'tnum',
+                justSettledMemo(start) && 'matrix-summary-cell--justsettled',
+                bestEndChosen && 'matrix-summary-cell--bestend-chosen',
+              ]}
+              class:matrix-row--active={start === activeStart}
+              style={`height: var(--row-h)`}
+            >
+              {#if runningEnd != null}
+                {runningEnd}
+              {/if}
+            </div>
+          {/each}
+        </div>
       </div>
-      <div class="matrix-summary-col matrix-summary-col--bestend">
-        <div class="matrix-summary-head" style={`height: ${headRowOneHeight}`}><code>bestEnd[start]</code></div>
-        <div class="matrix-summary-head matrix-summary-head--sub" style={`height: ${headRowTwoHeight}`}></div>
+
+      <!-- NARROW (<768px): one column, minScore stacked above bestEnd inside
+           each row's own already-two-line-tall box (--row-h). Labels reuse
+           the same two header rows the wide layout uses, `minScore` in row 1
+           and `bestEnd` in row 2, dropping the `[start]` suffix — every row
+           IS a start, and the table's own corner cell already says so — so
+           both labels fit ~80px without clipping. -->
+      <div class="matrix-summary-narrow">
+        <!-- One header box, matching the table's own first header row (the
+             column-index row) at this width. -->
+        <div class="matrix-summary-head matrix-summary-head--narrow" style={`height: ${headRowOneHeight}`}>
+          <span>minScore</span>
+          <span class="matrix-summary-head--bestend-label">bestEnd</span>
+        </div>
+        <!-- A second, blank header box reserving the exact height the
+             table's own two narrow-only header rows add below this point —
+             the spanning `minScore[end]` label row plus the memo-values row
+             (see `.matrix-memo-label-row`/`.matrix-memo-row` in the table
+             markup above). The summary column has nothing new to label here
+             (both its fields are already named in the box above), but it
+             still has to claim this same vertical space, or its body rows
+             would start one row-height too high relative to the table's body
+             rows. Built from the identical two heights the table's own rows
+             use (`labelRowHeight` for the spanning row, `headRowTwoHeight`
+             for the memo row), so the two sides can never disagree about how
+             tall this reserved strip is. -->
+        <div class="matrix-summary-head matrix-summary-head--sub" style={`height: calc(${labelRowHeight} + ${headRowTwoHeight})`}></div>
         {#each rows as start (start)}
           {@const runningEnd = runningBestEndAtStep.get(start)}
           {@const bestEndChosen = runningEnd != null && isChosen(start, runningEnd)}
           <div
-            class={[
-              'matrix-summary-cell',
-              'matrix-summary-cell--bestend',
-              'tnum',
-              justSettledMemo(start) && 'matrix-summary-cell--justsettled',
-              bestEndChosen && 'matrix-summary-cell--bestend-chosen',
-            ]}
+            class={['matrix-summary-cell--stacked', justSettledMemo(start) && 'matrix-summary-cell--justsettled']}
             class:matrix-row--active={start === activeStart}
             style={`height: var(--row-h)`}
           >
-            {#if runningEnd != null}
-              {runningEnd}
-            {/if}
+            <span class="matrix-summary-stacked-value tnum">
+              {#if liveSettled[start] != null}{fmtLive(liveSettled[start])}{/if}
+            </span>
+            <span
+              class={['matrix-summary-stacked-value', 'matrix-summary-cell--bestend', 'tnum', bestEndChosen && 'matrix-summary-cell--bestend-chosen']}
+            >
+              {#if runningEnd != null}{runningEnd}{/if}
+            </span>
           </div>
         {/each}
       </div>
@@ -851,6 +1057,18 @@
     flex: none;
   }
 
+  /* Wide (>=768px): the original two-column layout, untouched. Hidden below
+     768px in favor of `.matrix-summary-narrow` (see the media query at the
+     bottom of this file) — see the markup comment above for why this is two
+     real blocks rather than one CSS-reflowed one. */
+  .matrix-summary-wide {
+    display: flex;
+  }
+
+  .matrix-summary-narrow {
+    display: none;
+  }
+
   .matrix-summary-col {
     display: flex;
     flex-direction: column;
@@ -1003,6 +1221,45 @@
        does not inherit that rule's right edge, and the index column's own
        border stopped for exactly one row. */
     border-right: 1px solid var(--color-hairline);
+  }
+
+  /* Narrow-only spanning label row (see the template's `{#if isNarrow}`
+     block) — the memo row's `minScore[end]` label, promoted out of the
+     sticky index column into its own full-width row directly above the row
+     of values it describes. Left-aligned rather than centered like every
+     other header cell, so it reads as a caption sitting above its row (the
+     way a section label reads above the content it introduces) rather than
+     as a column heading centered over nothing in particular. Not sticky and
+     not part of `.matrix-sticky-col`: a single cell spanning every column
+     already covers the full scroll width by construction, so pinning it
+     while its own row scrolls under it is not a real concern here the way it
+     is for the corner/label cells that share a column with scrolling
+     candidates. */
+  .matrix-memo-label {
+    text-align: left;
+    font-weight: 500;
+    font-size: var(--text-13);
+    color: var(--color-text-secondary);
+    background: var(--color-surface);
+    padding: var(--space-4) var(--space-8);
+    border-bottom: 1px solid var(--color-hairline);
+  }
+
+  /* Flattens the global `code` chip's own padding/inline-flex box (same
+     reasoning as `.legend-key-code` above) so this label's height is exactly
+     the `<th>`'s own padding plus one line of text — nothing more. Left as
+     the default chip, the chip's own `--space-4`/`--space-8` padding stacked
+     on top of the `<th>`'s padding, and the row rendered visibly taller than
+     `labelRowHeight` (the script's matching height reservation for the
+     narrow summary block, see the script) accounted for — the two blocks'
+     header stacks drifted apart by exactly that stacked padding, and every
+     body row below inherited the same offset. */
+  .matrix-memo-label code {
+    display: inline;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    color: inherit;
   }
 
   .matrix-head {
@@ -1265,6 +1522,42 @@
     font-weight: 600;
   }
 
+  /* Narrow-layout stacked cell: one box per row (--row-h, already two lines
+     tall), holding minScore above bestEnd — see the markup comment on
+     `.matrix-summary-narrow` above. `justify-content: space-evenly` splits
+     the box's existing two-line height into two even halves without adding
+     any new height token, so this reuses the same reserved box the wide
+     layout's single-value cell already claims. */
+  .matrix-summary-cell--stacked {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-evenly;
+    color: var(--color-text);
+    font-weight: 600;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-hairline);
+    box-sizing: border-box;
+  }
+
+  .matrix-summary-stacked-value {
+    font-size: var(--text-13);
+    line-height: var(--lh-body);
+  }
+
+  .matrix-summary-cell--stacked .matrix-summary-cell--bestend {
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  .matrix-summary-cell--stacked.matrix-summary-cell--justsettled {
+    background: var(--color-accent-tint);
+  }
+
+  .matrix-summary-cell--stacked.matrix-summary-cell--justsettled .matrix-summary-stacked-value:first-child {
+    color: var(--color-accent);
+  }
+
   .matrix-cell-total {
     height: calc(var(--text-13) * var(--lh-body));
     line-height: var(--lh-body);
@@ -1427,40 +1720,87 @@
     color: var(--color-overflow);
   }
 
-  /* Below ~480px, the summary block's two columns at their full label-driven
-     width (152px + 152px = 304px) plus the sticky index column (152px)
-     leave little to no room for even a sliver of the scroll container in the
-     flex row — every element here has a fixed width except the scroll
-     container, so the scroll container is what absorbs the shortfall
-     (shrinking toward, and eventually below, its own five-column floor and
-     scrolling), never the fixed elements giving up their own width. The
-     actual mitigation is narrowing the two summary columns back down near
-     their number content's real width, freeing space for the scroll
-     container to stay usable. Their header labels no longer fit at this
-     width alongside a chip: each label's `<code>` element (see markup above
-     and the visually-hidden rule below) is hidden visually only, staying in
-     the accessibility tree, at this breakpoint. */
-  @media (max-width: 480px) {
-    .matrix-summary-col {
-      width: calc(var(--space-48) + var(--space-16));
+  /* Below 768px: the narrow layout described at the top of the file (three
+     space-saving changes, each moving information rather than losing it):
+       1. Cell decomposition subtext hidden; total-only, one-line reservation.
+       2. Wide two-column summary swapped for the narrow stacked column.
+       3. The `minScore[end]` memo row's label moves off the sticky index
+          column onto its own full-width spanning row just above the row of
+          memo values (see `.matrix-memo-label-row`/`.matrix-memo-label` and
+          the `{#if isNarrow}` block in the template) — the row itself stays,
+          spending a little vertical room to let the sticky index column
+          shrink to a single digit's width.
+     One block, so the three changes are read together as one breakpoint, not
+     three independent ones that could drift out of sync. Above 768px none of
+     these selectors match, so the wide layout (verified byte-identical: 152px
+     index column, five 122.4px candidate columns, two 152px summary columns)
+     is completely untouched. */
+  @media (max-width: 767px) {
+    /* (1) Totals only. The placeholder's second reserved line and the real
+       breakdown line both disappear, and .matrix-cell's own reserved height
+       drops from a two-line to a one-line box to match — a total alone never
+       needs the second line's room, and leaving it reserved would show a
+       tall empty gap under every filled cell. */
+    .matrix-cell-breakdown,
+    .matrix-cell-placeholder-line:last-child {
+      display: none;
     }
 
-    /* The label itself, not just its column, has to give way at this width:
-       `minScore[start]` and `bestEnd[start]` both measure wider than even
-       the roomier 152px column did (see the width comment above), so simply
-       narrowing the column back down would clip the very text it holds.
-       Standard visually-hidden clipping (off-screen, not `display: none`)
-       keeps the label in the accessibility tree — a screen reader still
-       announces the column's name — while removing it from the visual box
-       entirely, so the column can shrink to its number content's real width
-       instead. */
-    .matrix-summary-head code {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
+    .matrix-cell {
+      height: calc(var(--text-13) * var(--lh-body) + var(--space-8) * 2);
+    }
+
+    .matrix-cell-inf-solo {
+      height: calc(var(--text-13) * var(--lh-body));
+    }
+
+    /* (2) One combined summary column instead of two labelled ones. */
+    .matrix-summary-wide {
+      display: none;
+    }
+
+    .matrix-summary-narrow {
+      display: flex;
+      flex-direction: column;
+      width: calc(var(--space-64) + var(--space-16));
+      /* The seam between the scrolling candidates and this column. Its rows
+         line up with the table's exactly (measured 0px offset), but with no
+         vertical rule and the row separators alone, the stacked pairs read as
+         floating free of the rows they belong to. */
+      border-left: 1px solid var(--color-hairline);
+    }
+
+    /* 40px of column cannot hold two words and a diagonal: at this width the
+       labels stacked into a two-line blur and the diagonal was invisible
+       behind them. The end indices along the top and the start indices down
+       the side still say which axis is which, and the spanning
+       `minScore[end]` label names the row beneath it. */
+    .corner-label {
+      display: none;
+    }
+
+    /* Both labels stack inside the table's one remaining header row (row 2,
+       the memo row, is hidden below — see (3)), same order as the stacked
+       values beneath: minScore first, bestEnd second. */
+    .matrix-summary-head--narrow {
+      flex-direction: column;
+      gap: 0;
+      line-height: var(--lh-body);
+    }
+
+    .matrix-summary-head--bestend-label {
+      color: var(--color-text-secondary);
+    }
+
+    /* (3) The memo row stays, but its label moves off the sticky index
+       column and onto its own full-width row just above (rendered only when
+       `isNarrow`, see the template) — freeing the width the `minScore[end]`
+       label held so the index column can shrink to a single digit. Costs one
+       short extra row of height; the vertical room a phone has to spare is
+       the whole point of putting the row back rather than deleting it. */
+    .matrix-sticky-col,
+    .matrix-row-head {
+      width: calc(var(--space-32) + var(--space-8));
     }
   }
 </style>
