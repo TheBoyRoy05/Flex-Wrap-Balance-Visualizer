@@ -444,11 +444,19 @@ export function traceCellEvents(sizes: number[], capacity: number, gap: number):
 }
 
 /** Parse "40, 40, 100" into [40, 40, 100], dropping blanks and non-numbers. */
+/** Most items the visualiser will lay out. The matrix is O(n^2) cells, and past
+ *  roughly this many the informative diagonal band is buried in a field of
+ *  structurally impossible and overflowing cells — it stops teaching and becomes
+ *  wallpaper. The cap is on the input rather than the render so every part of
+ *  the page agrees on how many items exist. */
+export const MAX_ITEMS = 10;
+
 export function parseSizes(input: string): number[] {
   return input
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
     .map(Number)
-    .filter((x) => Number.isFinite(x));
+    .filter((x) => Number.isFinite(x))
+    .slice(0, MAX_ITEMS);
 }

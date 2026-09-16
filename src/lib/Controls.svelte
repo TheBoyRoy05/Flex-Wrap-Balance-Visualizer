@@ -3,6 +3,7 @@
   // via `bind:value`, which is two-way binding — the input both displays state.capacity
   // and writes back to it on every keystroke, no manual oninput handler needed.
   import { balanceState } from './state.svelte';
+  import { MAX_ITEMS } from './balance';
 
   // Capacity range: wide enough that, for the default item sizes (40, 40, 40, 40, 90;
   // sum 250), sweeping the slider walks through every line-break outcome from one item
@@ -56,7 +57,7 @@
 
 <div class="controls">
   <label class="field">
-    <span class="field-label">Item Sizes (px)</span>
+    <span class="field-label">Item Sizes (px, max {MAX_ITEMS})</span>
     <input
       type="text"
       bind:value={balanceState.sizesInput}
