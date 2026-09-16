@@ -214,7 +214,7 @@
   .stepper-progress {
     margin-left: auto;
     font-size: var(--text-13);
-    color: var(--color-text-secondary);
+    color: var(--color-text);
   }
 
   .stepper-body {
@@ -300,7 +300,7 @@
 
   .stepper-settle {
     font-size: var(--text-13);
-    color: var(--color-text-secondary);
+    color: var(--color-text);
   }
 
   .stepper-settle strong {

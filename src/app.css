@@ -69,7 +69,7 @@
 
   font: var(--text-17)/var(--lh-body) var(--sans);
   color-scheme: dark;
-  color: var(--color-text-secondary);
+  color: var(--color-text);
   background: var(--color-bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -142,7 +142,7 @@ code {
 .field-label {
   font-size: var(--text-13);
   font-weight: 500;
-  color: var(--color-text-secondary);
+  color: var(--color-text);
 }
 
 .field-input {

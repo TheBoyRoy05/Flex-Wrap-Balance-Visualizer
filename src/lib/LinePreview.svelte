@@ -200,7 +200,7 @@
 
   .panel-empty {
     font-size: var(--text-15);
-    color: var(--color-text-secondary);
+    color: var(--color-text);
     padding: var(--space-16);
   }
 
@@ -343,7 +343,7 @@
 
   .panel-total {
     font-size: var(--text-13);
-    color: var(--color-text-secondary);
+    color: var(--color-text);
     padding: var(--space-8) var(--space-16) var(--space-16);
   }
 

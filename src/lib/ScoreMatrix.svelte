@@ -850,7 +850,7 @@
     align-items: center;
     gap: var(--space-16);
     font-size: var(--text-13);
-    color: var(--color-text-secondary);
+    color: var(--color-text);
   }
 
   .legend-item {
@@ -926,7 +926,7 @@
   .legend-item--key {
     margin-left: auto;
     font-size: var(--text-13);
-    color: var(--color-text-secondary);
+    color: var(--color-text);
   }
 
   /* One code element, one continuous string — overrides the global `code`
@@ -1083,7 +1083,7 @@
     justify-content: center;
     font-weight: 500;
     font-size: var(--text-13);
-    color: var(--color-text-secondary);
+    color: var(--color-text);
     background: var(--color-surface);
     padding: var(--space-8);
     border-bottom: 1px solid var(--color-hairline);
@@ -1106,7 +1106,7 @@
   .matrix-minscore,
   .matrix-corner--sub {
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--color-text);
     background: var(--color-surface);
     /* padding: var(--space-8); */
     /* Same reasoning as `.matrix-cell`'s own `vertical-align: middle` below:
@@ -1172,7 +1172,7 @@
      this exact cell was the earlier bug — scrolling candidate values slid
      underneath it and the text collided, since the label had no opaque
      surface of its own to occupy. The label's subdued look comes from
-     `color: var(--color-text-secondary)` (inherited from the shared
+     `color: var(--color-text)` (inherited from the shared
      .matrix-corner/.matrix-head/.matrix-row-head/.matrix-minscore rule
      above), no `opacity` shortcut — `opacity` would also fade this cell's
      background translucent and let a scrolled neighbour show through it,
@@ -1202,7 +1202,7 @@
     text-align: left;
     font-weight: 500;
     font-size: var(--text-13);
-    color: var(--color-text-secondary);
+    color: var(--color-text);
     background: var(--color-surface);
     padding: var(--space-4) var(--space-8);
     border-bottom: 1px solid var(--color-hairline);
@@ -1459,7 +1459,7 @@
      score" and "an index" rather than two scores. */
   .matrix-summary-cell--bestend {
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--color-text);
   }
 
   /* Settle instant wins over the index's usual secondary-color treatment: the
@@ -1510,7 +1510,7 @@
 
   .matrix-summary-cell--stacked .matrix-summary-cell--bestend {
     font-weight: 500;
-    color: var(--color-text-secondary);
+    color: var(--color-text);
   }
 
   .matrix-summary-cell--stacked.matrix-summary-cell--justsettled {
@@ -1770,7 +1770,7 @@
     }
 
     .matrix-summary-head--bestend-label {
-      color: var(--color-text-secondary);
+      color: var(--color-text);
     }
 
     /* (3) The memo row stays, but its label moves off the sticky index
