@@ -593,8 +593,8 @@
       Overflows
     </span>
     <span class="legend-item legend-item--axes">
-      <span>start<span class="axis-word">&nbsp;index</span> &darr;</span>
-      <span>end<span class="axis-word">&nbsp;index</span> &rarr;</span>
+      <span>Start<span class="axis-word">&nbsp;Index</span> &darr;</span>
+      <span>End<span class="axis-word">&nbsp;Index</span> &rarr;</span>
     </span>
     <span class="legend-item legend-item--key" aria-label="cell total equals free squared plus minScore at end">
       <code class="legend-key-code">total = free² + minScore[end]</code>

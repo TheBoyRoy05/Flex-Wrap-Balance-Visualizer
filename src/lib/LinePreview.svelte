@@ -152,7 +152,7 @@
         </div>
       </div>
       <p class="panel-total" class:panel-total--overflow={lines.some((line) => line.overflow)}>
-        Total squared free space: <span class="panel-total-value">{total}</span>
+        Total Squared Free Space: <span class="panel-total-value">{total}</span>
         {#if lines.some((line) => line.overflow)}
           <span class="panel-total-overflow-note">— includes an overflowing line</span>
         {/if}
