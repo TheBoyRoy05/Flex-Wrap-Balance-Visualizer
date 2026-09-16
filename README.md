@@ -28,7 +28,7 @@ Walking backwards through our items, for each start, we calculate the best end b
 
 $$\texttt{minScore}[\texttt{start}] = \min_{\texttt{end} \in [\texttt{start} + 1, \texttt{itemCount}]} \left( \texttt{freeSpace}[\texttt{start}, \texttt{end})^2 + \texttt{minScore}[\texttt{end}] \right)$$
 
-We also store $\text{bestEndForStart}[\texttt{start}]$ as the last $\texttt{end}$ which achieves $\texttt{minScore}[\texttt{start}]$. We store the _last_ $\texttt{end}$ rather than any other to serve as the tie-breaker specified by the [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance).
+We also store $\texttt{bestEnd}[\texttt{start}]$ as the last $\texttt{end}$ which achieves $\texttt{minScore}[\texttt{start}]$. We store the _last_ $\texttt{end}$ rather than any other to serve as the tie-breaker specified by the [CSS Specification](https://drafts.csswg.org/css-flexbox-2/#algo-balance).
 
 #### Second Pass
 
@@ -46,7 +46,7 @@ With this, we have found the best line breaks which minimzes the sum of the squa
 
   $$\texttt{freeSpace}[\texttt{start}, \texttt{end}) = \max\left(0,\ \texttt{capacity} - (\texttt{prefixSum}[\texttt{end}] - \texttt{prefixSum}[\texttt{start}] - \texttt{gap})\right)$$
 
-- When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediately and mark the rest of the row as impossible since all item sizes are non-negative so we'll stay above capacity for any larger rows.
+- When looping through the ends for each start, if we overflow the capacity (red boxes), we break immediately and mark the rest of the row as impossible. This is because all item sizes are non-negative so we'll stay above capacity with more items.
 
   With this, we can further decrease our time complexity to $O(n * L)$ where $L$ is the average line length. In the typical case, $L << n$ and hence, we can typically achieve near $O(n)$, down from the $O(2^n)$ of brute force. Incredible!
 
