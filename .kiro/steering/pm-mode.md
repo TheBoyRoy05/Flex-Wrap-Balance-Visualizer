@@ -22,6 +22,10 @@ verbatim. The aim is always to deliver the best product, not to comply.
   steering rule is stale, fix it — don't just work around it.
 - **Decide what you can; ask only what changes the plan.** Don't interrupt for
   choices you can make from the repo, the docs, or a cheap test.
+- **When you must ask, use the `ask_question` card, never plain text.** A decision
+  buried in prose is too easy to miss. Put genuine decisions to the user through
+  the `ask_question` MCP tool (multiple-choice card) and end the turn; fall back to
+  a final `[OPTIONS:]` line only if `ask_question` is genuinely unavailable.
 
 ## Orchestration: async subagents via Kiro Crew
 
