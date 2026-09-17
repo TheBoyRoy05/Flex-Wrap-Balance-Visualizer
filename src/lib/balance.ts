@@ -148,6 +148,114 @@ export function balancedLineBreaks(sizes: number[], capacity: number, gap: numbe
   return { breaks, minScores, bestEnd, score, len };
 }
 
+/** Result of the two-dimensional DP that `flex-line-count` requires. */
+export interface Balance2DResult extends MatrixResult {
+  /** min(flexLineCount, itemCount) — a line always holds at least one item, so asking for more
+   *  lines than there are items clamps. Mirrors `requiredLineCount` in FlexLineBreaker.cpp. */
+  requiredLineCount: number;
+  /** minScores[start][remaining] = least total squared free space to cover items [start, n)
+   *  using AT LEAST `remaining` further lines. `null` where the state is unreachable: you
+   *  cannot cover fewer items than the lines you are required to use. */
+  minScores: (number | null)[][];
+  /** bestEnd[start][remaining] = the end chosen for the line starting at start, in that layer. */
+  bestEnd: (number | null)[][];
+  /** Break indices, one past the last item of each line, ending with n. */
+  breaks: number[];
+}
+
+/** The balance algorithm with a minimum line count, as a second DP dimension.
+ *
+ *  A faithful port of WebCore's `balancedLineBreaks(..., size_t flexLineCount)`. The extra axis is
+ *  a budget, not an exact count: `remaining` means "at least this many further lines", which is why
+ *  the successor index floors at zero and why layer 0 is exactly the unconstrained 1D problem the
+ *  single-argument version solves.
+ *
+ *  Note on capacity: WebCore accumulates in UInt128 because an auto-height column flow has capacity
+ *  LayoutUnit::max(), and five lines of (2^31-1)^2 overflow uint64. JavaScript numbers cannot
+ *  represent that case exactly either, and this visualiser's capacity is bounded by its own input,
+ *  so the port does not attempt it. */
+export function balancedLineBreaksWithLineCount(
+  sizes: number[],
+  capacity: number,
+  gap: number,
+  flexLineCount = 1,
+): Balance2DResult {
+  const n = sizes.length;
+  if (!n)
+    return { breaks: [], minScores: [], bestEnd: [], score: [], len: [], requiredLineCount: 0 };
+
+  const { score, len, length } = buildMatrix(sizes, capacity, gap);
+  const requiredLineCount = Math.min(Math.max(1, Math.floor(flexLineCount)), n);
+
+  const empty = (): (number | null)[][] =>
+    Array.from({ length: n }, () => new Array<number | null>(requiredLineCount + 1).fill(null));
+
+  // Only asking for one line keeps the fits-on-one-line shortcut. At two or more the constraint
+  // can split a line that would otherwise fit, so the shortcut no longer applies.
+  if (requiredLineCount <= 1 && length(0, n) <= capacity) {
+    const minScores = empty();
+    minScores[0][1] = score[0][n];
+    const bestEnd = empty();
+    bestEnd[0][1] = n;
+    return { breaks: [n], minScores, bestEnd, score, len, requiredLineCount };
+  }
+
+  const lastFittingEnd = new Array<number>(n).fill(0);
+  let scan = 1;
+  for (let start = 0; start < n; start++) {
+    scan = Math.max(scan, start + 1);
+    while (scan < n && length(start, scan + 1) <= capacity) scan++;
+    lastFittingEnd[start] = scan;
+  }
+
+  // minScores[start][lines] is the least total squared free space to cover items [start, n) in AT
+  // LEAST `lines` lines, for lines in [1, requiredLineCount]. Indexed from 1, exactly as the landed
+  // WebCore code is: there is no zero layer, because a non-empty suffix always needs a line, which
+  // is also why layer 0 was measurably identical to layer 1 in the earlier formulation.
+  const INF = Number.POSITIVE_INFINITY;
+  const minScores: number[][] = Array.from({ length: n }, () => new Array<number>(requiredLineCount + 1).fill(INF));
+  const bestEnd: (number | null)[][] = Array.from({ length: n }, () => new Array<number | null>(requiredLineCount + 1).fill(null));
+
+  for (let start = n - 1; start >= 0; start--) {
+    for (let lines = 1; lines <= requiredLineCount; lines++) {
+      for (let end = start + 1; end <= lastFittingEnd[start]; end++) {
+        // This line covers [start, end); the rest is [end, n). When the rest is empty this is the
+        // final line, which alone cannot satisfy a requirement of more than one line.
+        const restIsEmpty = end === n;
+        if (restIsEmpty && lines > 1) continue;
+
+        // The rest needs one fewer line, but a non-empty rest always needs at least one.
+        const restLines = Math.max(lines - 1, 1);
+        if (!restIsEmpty && restLines > n - end) continue;
+
+        const restScore = restIsEmpty ? 0 : minScores[end][restLines];
+        const total = (score[start][end] as number) + restScore;
+        // <= so the last end that ties wins, giving the earliest line the most items.
+        if (total <= minScores[start][lines]) {
+          minScores[start][lines] = total;
+          bestEnd[start][lines] = end;
+        }
+      }
+    }
+  }
+
+  const breaks: number[] = [];
+  for (let start = 0, lines = requiredLineCount; start < n; ) {
+    const end = bestEnd[start][lines];
+    if (end == null) break;
+    breaks.push(end);
+    lines = Math.max(lines - 1, 1);
+    start = end;
+  }
+
+  // Infinity is an internal sentinel; a caller should see "no such state" instead.
+  const reported: (number | null)[][] = minScores.map((row) =>
+    row.map((v) => (Number.isFinite(v) ? v : null)),
+  );
+
+  return { breaks, minScores: reported, bestEnd, score, len, requiredLineCount };
+}
+
 /** One candidate end considered for the line starting at `start`, in the order the DP visits it. */
 export interface DpCandidate {
   end: number;
@@ -266,6 +374,13 @@ export interface CellEvaluateEvent {
    *  (the memo entry is always already settled) but it never competes for the row's
    *  minimum and can never be isChosen. Absent (undefined) on every other event. */
   isProbe?: boolean;
+  /** Which layer of the 2D DP this evaluation belongs to: `remaining`, the number of
+   *  further lines still owed. Absent for the 1D trace. */
+  remaining?: number;
+  /** The layer the memo entry is read FROM — `remaining - 1`, floored at 0. The whole
+   *  point of the second dimension: a cell in one layer is priced using the layer
+   *  beneath it. Absent for the 1D trace. */
+  memoRemaining?: number;
   /** Present only when isProbe is true: every `end` from this candidate's `end + 1`
    *  through `n` — the rest of the row, ruled out by this one test rather than
    *  individually tried. Consumers render these as impossible in the same step as
@@ -280,6 +395,8 @@ export interface CellSettleEvent {
   kind: 'settle';
   start: number;
   settledValue: number;
+  /** The layer this row settled in. Absent for the 1D trace. */
+  remaining?: number;
 }
 
 /** Fired once per link of the reconstructed path, during a second, backward pass that
@@ -293,6 +410,9 @@ export interface TracebackStepEvent {
   kind: 'traceback';
   start: number;
   end: number;
+  /** Lines still owed when this link was taken. The walk decrements it, floored at 0,
+   *  so the chosen path descends through the layers. Absent for the 1D trace. */
+  remaining?: number;
 }
 
 /** Fired exactly once, after every traceback link has been walked: states the
@@ -450,6 +570,145 @@ export function traceCellEvents(sizes: number[], capacity: number, gap: number):
  *  wallpaper. The cap is on the input rather than the render so every part of
  *  the page agrees on how many items exist. */
 export const MAX_ITEMS = 10;
+
+/** The step sequence for ONE layer of the 2D DP.
+ *
+ *  The real loop interleaves layers per row (`start` outer, `remaining` middle), so no single
+ *  layer can be stepped in the literal execution order. This trace instead walks one layer's own
+ *  cells, which is faithful about the dependency that matters: a cell in layer `remaining` is
+ *  priced with `minScores[end][remaining - 1]`, and that shallower layer is genuinely already
+ *  complete, because its rows all sit at a higher `start`.
+ *
+ *  Only the answer layer gets traceback and result events. A lower layer settles and stops,
+ *  because it does not produce the answer — it prices the layer above it. */
+export function traceCellEventsForLayer(
+  sizes: number[],
+  capacity: number,
+  gap: number,
+  flexLineCount: number,
+  layer: number,
+): CellEvent[] {
+  const n = sizes.length;
+  const events: CellEvent[] = [];
+  if (!n) return events;
+
+  const solved = balancedLineBreaksWithLineCount(sizes, capacity, gap, flexLineCount);
+  const { requiredLineCount, score } = solved;
+  const remaining = Math.min(Math.max(1, Math.floor(layer)), requiredLineCount);
+  // A non-empty rest always needs at least one line, so the layer beneath floors at 1, matching
+  // `restLines` in WebCore. The final line's rest is empty and simply costs nothing.
+  const restLayer = Math.max(remaining - 1, 1);
+
+  const { length } = buildMatrix(sizes, capacity, gap);
+
+  // The algorithm's own shortcut: one line asked for, and everything fits on one line, so no DP
+  // runs at all. The trace has to take it too, or it would narrate work the solver never did —
+  // and the solver's table is left sparse in exactly this case.
+  if (requiredLineCount <= 1 && length(0, n) <= capacity) {
+    const lineScore = score[0][n] as number;
+    events.push({
+      kind: 'evaluate',
+      start: 0,
+      end: n,
+      remaining: 1,
+      memoIndex: n,
+      memoRemaining: 1,
+      memoValue: 0,
+      lineScore,
+      total: lineScore,
+      isChosen: true,
+    });
+    events.push({ kind: 'settle', start: 0, settledValue: lineScore, remaining: 1 });
+    events.push({ kind: 'traceback', start: 0, end: n, remaining: 1 });
+    events.push({ kind: 'result', breaks: solved.breaks });
+    return events;
+  }
+
+  const lastFittingEnd = new Array<number>(n).fill(0);
+  let scan = 1;
+  for (let start = 0; start < n; start++) {
+    scan = Math.max(scan, start + 1);
+    while (scan < n && length(start, scan + 1) <= capacity) scan++;
+    lastFittingEnd[start] = scan;
+  }
+
+  const INF = Number.POSITIVE_INFINITY;
+
+  const restScoreFor = (end: number): number | null => {
+    if (end === n) return remaining > 1 ? null : 0;
+    if (restLayer > n - end) return null;
+    return solved.minScores[end][restLayer];
+  };
+
+  for (let start = n - 1; start >= 0; start--) {
+    let best = INF;
+    let bestEndHere: number | null = null;
+    for (let end = start + 1; end <= lastFittingEnd[start]; end++) {
+      const rest = restScoreFor(end);
+      if (rest == null) continue;
+      const lineScore = score[start][end] as number;
+      const total = lineScore + rest;
+      if (total <= best) {
+        best = total;
+        bestEndHere = end;
+      }
+      events.push({
+        kind: 'evaluate',
+        start,
+        end,
+        remaining,
+        memoIndex: end,
+        memoRemaining: end === n ? remaining : restLayer,
+        memoValue: rest,
+        lineScore,
+        total,
+        isChosen: false,
+      });
+    }
+    const probeEnd = lastFittingEnd[start] + 1;
+    if (probeEnd <= n) {
+      const rest = restScoreFor(probeEnd);
+      if (rest != null) {
+        events.push({
+          kind: 'evaluate',
+          start,
+          end: probeEnd,
+          remaining,
+          memoIndex: probeEnd,
+          memoRemaining: probeEnd === n ? remaining : restLayer,
+          memoValue: rest,
+          lineScore: score[start][probeEnd] as number,
+          total: (score[start][probeEnd] as number) + rest,
+          isChosen: false,
+          isProbe: true,
+          impliedEnds: Array.from({ length: n - probeEnd }, (_, i) => probeEnd + 1 + i),
+        });
+      }
+    }
+    if (bestEndHere != null) {
+      for (let i = events.length - 1; i >= 0; i--) {
+        const ev = events[i];
+        if (ev.kind !== 'evaluate' || ev.start !== start) continue;
+        if (ev.end === bestEndHere && !ev.isProbe) { ev.isChosen = true; break; }
+      }
+    }
+    if (Number.isFinite(best)) events.push({ kind: 'settle', start, settledValue: best, remaining });
+  }
+
+  // Only the answer layer reconstructs a path.
+  if (remaining === requiredLineCount) {
+    for (let start = 0, owed = requiredLineCount; start < n; ) {
+      const end = solved.bestEnd[start][owed];
+      if (end == null) break;
+      events.push({ kind: 'traceback', start, end, remaining: owed });
+      owed = Math.max(owed - 1, 1);
+      start = end;
+    }
+    events.push({ kind: 'result', breaks: solved.breaks });
+  }
+
+  return events;
+}
 
 export function parseSizes(input: string): number[] {
   return input
