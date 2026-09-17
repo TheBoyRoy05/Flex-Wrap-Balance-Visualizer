@@ -21,13 +21,13 @@
 
   const { len } = $derived(balanceState.result2D);
 
-  // The layer this matrix is currently showing ("Lines Left"), and the layer
-  // beneath it the memo row reads from — `Math.max(remaining - 1, 1)`, same rule
-  // `traceCellEventsForLayer` documents in balance.ts. There is no layer 0: a
-  // non-empty rest always owes at least one line, so the shallower layer floors
-  // at 1, never 0. Both are facts about the current inputs, not UI state of
-  // their own: DpStepper owns the control that writes `balanceState.layer`, this
-  // component only reads the clamped result.
+  // The layer this matrix shows — after Option A, always the ANSWER layer
+  // (`requiredLineCount`) — and the layer beneath it the memo row reads from,
+  // `Math.max(remaining - 1, 1)`, same rule `traceCellEventsForLayer` documents in
+  // balance.ts. There is no layer 0: a non-empty rest always owes at least one
+  // line, so the shallower layer floors at 1, never 0. Both are facts about the
+  // current inputs: there is no layer control any more, so this component just
+  // reads `clampedLayer`, which `state.svelte.ts` fixes to the answer layer.
   const remaining = $derived(balanceState.clampedLayer);
   const successorRemaining = $derived(Math.max(remaining - 1, 1));
 

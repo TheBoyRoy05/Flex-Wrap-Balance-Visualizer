@@ -16,11 +16,11 @@
   const atStart = $derived(stepIndex <= -1 || events.length === 0);
   const atEnd = $derived(stepIndex >= events.length - 1);
 
-  // The Lines Left control's own bounds: 1 (the lowest layer worth exposing — see
-  // `balanceState.layer`'s field comment) through `requiredLineCount`, the deepest
-  // layer this input actually needs. A $derived fact about the current inputs, not
-  // a constant, since flex-line-count and item count both change it.
-  const requiredLineCount = $derived(balanceState.result2D.requiredLineCount);
+  // The answer layer the whole visualizer now shows (Option A): the deepest layer
+  // the inputs need. Headlines still name it, and the memo line still names the
+  // layer beneath it (`max(layer-1,1)`), because a cell in this layer really does
+  // read that shallower one — that fact is inlined in the step narration rather
+  // than browsed via a control.
   const layer = $derived(balanceState.clampedLayer);
   // Item count, so the template can tell an evaluate event's candidate end apart
   // from the empty-rest case (end === n) — see the stepper-eval-math branch below.
@@ -56,28 +56,15 @@
     playing = !playing;
   }
 
-  // Same commit-time clamp pattern as Controls.svelte's capacity/gap/flex-line-count
-  // fields: a typed value can be out of range or momentarily non-numeric while
-  // editing, so it's only forced back into [1, requiredLineCount] on blur/change,
-  // Both inputs are value + handler rather than `bind:`, because changing layer is not a
-  // plain assignment: `setLayer` also saves this layer's step position and restores the
-  // target's. They display `clampedLayer`, so neither input can show a value outside the
-  // range and no write-through effect is needed to snap them back.
-  function pickLayer(event: Event) {
-    const raw = Number((event.currentTarget as HTMLInputElement).value);
-    if (Number.isFinite(raw)) balanceState.setLayer(raw);
-  }
-
   // Changing sizes/capacity/gap/flex-line-count produces a new `events` list with an
   // unrelated shape — clamping alone (see `clampedCellStep`) could still land mid-run of
   // the new list and show a partially-filled matrix that never actually happened. This
   // effect is a real side effect (it resets state in response to *other* state changing,
   // there's no expression that "equals" that reset), so it's `$effect`, not `$derived`.
   //
-  // It depends on `runSignature`, NOT on `events`. `events` also changes when only the
-  // layer changes, and an effect tracks every reactive value it touches, so reading it
-  // here made this fire on layer moves too and wiped the position `setLayer` had just
-  // restored. Depend on the narrowest thing that means "this is a different run".
+  // It depends on `runSignature`, the identity of the current run. Option A removed the
+  // layer axis, so there is no within-run navigation left to preserve — any input change
+  // is a new run and resets the step position to the start.
   $effect(() => {
     balanceState.runSignature;
     playing = false;
@@ -135,29 +122,6 @@
     <button type="button" class="stepper-btn" onclick={jumpToEnd} disabled={atEnd}>
       Fill all
     </button>
-    <label class="stepper-layer-field">
-      <span class="stepper-layer-label">Lines Left</span>
-      <input
-        type="range"
-        value={balanceState.clampedLayer}
-        oninput={pickLayer}
-        min={1}
-        max={requiredLineCount}
-        step={1}
-        class="stepper-layer-slider"
-        aria-label="Lines left"
-      />
-      <input
-        type="number"
-        value={balanceState.clampedLayer}
-        onchange={pickLayer}
-        min={1}
-        max={requiredLineCount}
-        step={1}
-        class="field-input stepper-layer-number"
-        aria-label="Lines left, numeric"
-      />
-    </label>
 
     <span class="stepper-progress tnum stepper-progress--end">{stepIndex + 1} / {events.length}</span>
   </div>
@@ -274,107 +238,8 @@
 
   .stepper-progress--end {
     margin-left: auto;
-  }
-
-  .stepper-progress {
-    margin-left: auto;
     font-size: var(--text-13);
     color: var(--color-text);
-  }
-
-  /* Lines Left: same slider+number pairing as Controls.svelte's CSS inputs, but
-     this is a position in the run, not a CSS property, so it sits here with
-     Reset/back/play/forward/Fill all rather than in Controls.svelte. Reuses
-     .field-input for the number field so both panels' numeric inputs match. */
-  /* Sits in the button row: the layer is a position in the run, like the step index, so
-     it belongs with the controls that move through the run rather than in a band below. */
-  .stepper-layer-field {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: var(--space-8);
-    margin-left: var(--space-16);
-  }
-
-  .stepper-layer-label {
-    font-size: var(--text-13);
-    font-weight: 500;
-    color: var(--color-text);
-  }
-
-  /* The range is 1..requiredLineCount, so at most ten positions and usually two or
-     three. A full-width track implied far more travel than there is. */
-
-
-  .stepper-layer-number {
-    width: calc(var(--control-height) * 2);
-    flex: none;
-  }
-
-  /* Same track/thumb treatment as Controls.svelte's .field-slider, duplicated
-     rather than shared across files since Svelte scopes component styles. */
-  .stepper-layer-slider {
-    width: calc(var(--space-64) * 2);
-    flex: none;
-    height: var(--control-height);
-    -webkit-appearance: none;
-    appearance: none;
-    background: transparent;
-    padding: 0;
-    margin: 0;
-    cursor: pointer;
-  }
-
-  .stepper-layer-slider:focus-visible {
-    outline: none;
-  }
-
-  .stepper-layer-slider::-webkit-slider-runnable-track {
-    height: var(--space-4);
-    border-radius: var(--radius-6);
-    background: var(--color-hairline);
-  }
-
-  .stepper-layer-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: var(--space-16);
-    height: var(--space-16);
-    margin-top: calc((var(--space-4) - var(--space-16)) / 2);
-    border-radius: var(--radius-8);
-    background: var(--color-accent);
-    border: none;
-    box-shadow: 0 0 0 0 transparent;
-    transition: box-shadow 0.15s ease;
-  }
-
-  .stepper-layer-slider:focus-visible::-webkit-slider-thumb {
-    box-shadow: 0 0 0 var(--space-4) var(--color-accent-tint);
-  }
-
-  .stepper-layer-slider::-moz-range-track {
-    height: var(--space-4);
-    border-radius: var(--radius-6);
-    background: var(--color-hairline);
-  }
-
-  .stepper-layer-slider::-moz-range-progress {
-    height: var(--space-4);
-    border-radius: var(--radius-6);
-    background: var(--color-accent);
-  }
-
-  .stepper-layer-slider::-moz-range-thumb {
-    width: var(--space-16);
-    height: var(--space-16);
-    border-radius: var(--radius-8);
-    background: var(--color-accent);
-    border: none;
-    box-shadow: 0 0 0 0 transparent;
-    transition: box-shadow 0.15s ease;
-  }
-
-  .stepper-layer-slider:focus-visible::-moz-range-thumb {
-    box-shadow: 0 0 0 var(--space-4) var(--color-accent-tint);
   }
 
   .stepper-body {
@@ -490,18 +355,8 @@
     .stepper-btn:nth-of-type(1) { grid-area: 2 / 1 / 3 / 3; }
     .stepper-btn:nth-of-type(5) { grid-area: 2 / 3 / 3 / 4; }
 
-    .stepper-layer-field {
+    .stepper-progress--end {
       grid-area: 3 / 1 / 4 / 4;
-      margin-left: 0;
-    }
-
-    .stepper-layer-slider {
-      flex: 1;
-      width: auto;
-    }
-
-    .stepper-progress {
-      grid-area: 4 / 1 / 5 / 4;
       text-align: right;
     }
   }

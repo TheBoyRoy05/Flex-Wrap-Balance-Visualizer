@@ -26,12 +26,6 @@ class BalanceState {
   // value, so `effectiveFlexLineCount` below re-clamps on every read rather than
   // trusting the raw field.
   flexLineCount = $state(1);
-  // Which layer of the 2D DP ("Lines Left") the stepper/matrix are showing. Lives
-  // here, not as a local in DpStepper, because ScoreMatrix reads it too — same
-  // reasoning as `stepIndex` below: shared position state, not a per-component detail.
-  // 1-based: layer 0 is provably identical to layer 1 for every reachable state, so
-  // 1 is the lowest position actually worth exposing.
-  layer = $state(1);
   // Which cell-fill event the animation is showing. -1 is the empty/reset state:
   // no events fired yet, matrix blank, memo at its base case only. Genuine UI state —
   // no input combination determines "where the user has stepped to" — but it can point
@@ -39,33 +33,13 @@ class BalanceState {
   // so consumers read `clampedCellStep` below rather than this raw field.
   stepIndex = $state(-1);
 
-  // Remembered step position per layer, so moving Lines Left and coming back resumes
-  // where you were instead of snapping to the start. Keyed by the inputs as well as the
-  // layer: when sizes/capacity/gap/flex-line-count change, every old key stops matching
-  // and is simply never read again, which is cheaper and safer than watching for those
-  // edits and clearing the map. A remembered step can still be stale relative to a
-  // shorter trace, so `clampedCellStep` keeps doing the clamping it already did.
-  private stepMemory: Record<string, number> = $state({});
-
-  /** Identity of the current run: everything a trace depends on EXCEPT which layer is
-   *  being shown. Moving between layers of one run is navigation and keeps its progress;
-   *  changing an input starts a different run and discards it. */
+  /** Identity of the current run: everything a trace depends on. Changing any of
+   *  these starts a different run and resets progress (see the $effect in
+   *  DpStepper). Option A fixes the line count to `requiredLineCount`, so there is
+   *  no separate layer axis to key on any more. */
   runSignature: string = $derived(
     `${this.sizesInput}|${this.capacity}|${this.gap}|${this.flexLineCount}`,
   );
-
-  private stepKey(layer: number): string {
-    return `${this.runSignature}|${layer}`;
-  }
-
-  /** Move to another layer, saving this layer's position and restoring that layer's. */
-  setLayer(next: number): void {
-    const target = Math.min(Math.max(1, Math.floor(next)), Math.max(1, this.result2D.requiredLineCount));
-    if (target === this.clampedLayer) return;
-    this.stepMemory[this.stepKey(this.clampedLayer)] = this.stepIndex;
-    this.layer = target;
-    this.stepIndex = this.stepMemory[this.stepKey(target)] ?? -1;
-  }
 
   // Derived values recompute automatically whenever the $state fields they read change.
   sizes: number[] = $derived(parseSizes(this.sizesInput));
@@ -89,12 +63,13 @@ class BalanceState {
     balancedLineBreaksWithLineCount(this.sizes, this.capacity, this.gap, this.effectiveFlexLineCount),
   );
 
-  // Clamped so editing sizes/flex-line-count mid-session can never leave `layer`
-  // pointing past the top of a run that just got shallower. Floors at 1 for the
-  // reason `layer`'s own field comment gives.
-  clampedLayer: number = $derived(
-    Math.min(Math.max(1, this.layer), Math.max(1, this.result2D.requiredLineCount)),
-  );
+  // Option A: the visualizer always shows the ANSWER layer — the deepest layer the
+  // current inputs need, `requiredLineCount` (WebCore's min(flexLineCount, itemCount)).
+  // There is no browsable layer axis any more, so `clampedLayer` is simply that value.
+  // Kept under the old name so ScoreMatrix/DpStepper read it unchanged, and so
+  // `cellEvents` still hands it to `traceCellEventsForLayer`. Floors at 1 for the
+  // reason the old field comment gave: a non-empty suffix always owes at least one line.
+  clampedLayer: number = $derived(Math.max(1, this.result2D.requiredLineCount));
 
   // Every candidate the DP compared IN THE SELECTED LAYER, flattened to one event
   // per evaluation plus one settle event per completed row, in true execution order
