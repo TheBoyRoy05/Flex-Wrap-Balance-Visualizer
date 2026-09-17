@@ -71,6 +71,43 @@ class BalanceState {
   // reason the old field comment gave: a non-empty suffix always owes at least one line.
   clampedLayer: number = $derived(Math.max(1, this.result2D.requiredLineCount));
 
+  // Option B — the outcome table. For every requestable line count k = 1..n, the
+  // breaks the balanced algorithm produces and the total squared free space it
+  // costs. This is what a developer actually asks the feature ("what does
+  // flex-line-count: 3 give me?"), and it answers the k > 1 derivation gap Option A
+  // leaves in the matrix: the matrix shows ONE layer's mechanics; this shows the
+  // OUTCOME across every k without exposing the DP's third axis.
+  //
+  // A pure function of sizes/capacity/gap (NOT of flexLineCount — the whole point is
+  // to sweep k), so it is `$derived`. Each row re-runs the 2D DP at its own k; n is
+  // capped at MAX_ITEMS (10) so this is at most ten cheap solves, recomputed only
+  // when the sizes/capacity/gap inputs change. `score` is the least total squared
+  // free space for the whole run at layer k = `minScores[0][requiredLineCount]`; an
+  // unreachable layer (should not occur for k <= n, but guarded) reads as null.
+  // `clamped` marks the rows where the requested k exceeded the item count and the
+  // algorithm clamped to `requiredLineCount` — so k and the line count it actually
+  // used can differ, and the table says which.
+  outcomeTable: { k: number; lineCount: number; breaks: number[]; score: number | null; clamped: boolean }[] =
+    $derived.by(() => {
+      const n = this.sizes.length;
+      const rows = [];
+      for (let k = 1; k <= n; k++) {
+        const r = balancedLineBreaksWithLineCount(this.sizes, this.capacity, this.gap, k);
+        rows.push({
+          k,
+          lineCount: r.requiredLineCount,
+          breaks: r.breaks,
+          score: r.minScores[0]?.[r.requiredLineCount] ?? null,
+          clamped: r.requiredLineCount < k,
+        });
+      }
+      return rows;
+    });
+
+  // The k currently selected by the Flex Line Count control, so the table can
+  // highlight the row the rest of the page is showing. Same value `result2D` uses.
+  currentK: number = $derived(this.effectiveFlexLineCount);
+
   // Every candidate the DP compared IN THE SELECTED LAYER, flattened to one event
   // per evaluation plus one settle event per completed row, in true execution order
   // (start = n-1 down to 0) for that layer. A pure function of sizes/capacity/gap/

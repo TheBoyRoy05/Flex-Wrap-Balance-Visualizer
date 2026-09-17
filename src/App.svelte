@@ -3,6 +3,7 @@
   import LinePreview from './lib/LinePreview.svelte';
   import ScoreMatrix from './lib/ScoreMatrix.svelte';
   import DpStepper from './lib/DpStepper.svelte';
+  import OutcomeTable from './lib/OutcomeTable.svelte';
   import { balanceState } from './lib/state.svelte';
 
   // The row the stepper is currently deciding, read out of the current cell event so
@@ -49,6 +50,10 @@
       <DpStepper />
       {@render algorithmLink("Read More")}
     </ScoreMatrix>
+  </div>
+
+  <div class="measure">
+    <OutcomeTable />
   </div>
 </main>
 
