@@ -53,6 +53,25 @@
     const raw = Number((event.target as HTMLInputElement).value);
     balanceState.gap = Number.isFinite(raw) ? Math.min(GAP_MAX, Math.max(GAP_MIN, raw)) : GAP_MIN;
   }
+
+  // `flex-line-count`'s range is 1 to the current item count — a real fact about
+  // the input, not a fixed constant like capacity/gap's ranges above, so it's
+  // `$derived` rather than a `const`. Floors at 1 so the slider never gets a max
+  // below its own min while sizesInput is empty.
+  const flexLineCountMax = $derived(Math.max(1, balanceState.sizes.length));
+
+  // Same commit-time clamp as capacity/gap: a typed value can be out of range or
+  // momentarily non-numeric while editing, and the field is only forced back into
+  // range once the user leaves it (blur/change), not on every keystroke. Integer
+  // step, so a fractional paste also gets floored here rather than left to `step`'s
+  // native rounding (which only applies to `stepUp`/`stepDown`, not to arbitrary
+  // typed/pasted values).
+  function clampFlexLineCount(event: Event) {
+    const raw = Number((event.target as HTMLInputElement).value);
+    balanceState.flexLineCount = Number.isFinite(raw)
+      ? Math.min(flexLineCountMax, Math.max(1, Math.floor(raw)))
+      : 1;
+  }
 </script>
 
 <div class="controls">
@@ -115,6 +134,31 @@
       />
     </div>
   </label>
+
+  <label class="field">
+    <span class="field-label">Flex Line Count</span>
+    <div class="slider-row">
+      <input
+        type="range"
+        bind:value={balanceState.flexLineCount}
+        min={1}
+        max={flexLineCountMax}
+        step={1}
+        class="field-slider"
+        aria-label="Flex line count"
+      />
+      <input
+        type="number"
+        bind:value={balanceState.flexLineCount}
+        min={1}
+        max={flexLineCountMax}
+        step={1}
+        onchange={clampFlexLineCount}
+        class="field-input field-input-number"
+        aria-label="Flex line count, numeric"
+      />
+    </div>
+  </label>
 </div>
 
 <style>
@@ -126,7 +170,7 @@
 
   @media (min-width: 640px) {
     .controls {
-      grid-template-columns: 2fr 1fr 1fr;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
     }
   }
 

@@ -15,7 +15,7 @@
     /** Free space left on the line; 0 when the line overflows capacity. */
     free: number;
     /** Squared free space — what flex-wrap: balance actually minimizes. Read from
-     *  the shared score matrix (balanceState.result), never recomputed here, so this
+     *  the shared score matrix (balanceState.result2D), never recomputed here, so this
      *  panel and ScoreMatrix.svelte can never disagree about the same line's cost. */
     score: number;
     /** True when the line's laid-out length exceeds capacity — rendering must contain this, not spill it. */
@@ -24,11 +24,11 @@
 
   // The score matrix is a pure function of (sizes, capacity, gap) — it holds a
   // score/len entry for every [start, end) pair, independent of which breaks any
-  // particular strategy chose. That means the one matrix balanceState.result
+  // particular strategy chose. That means the one matrix balanceState.result2D
   // already computes for the DP also covers greedy's breaks: both strategies are
   // just different subsets of the same [start, end) index space, so both read from
   // this one source instead of each keeping its own free/score arithmetic.
-  const matrix: MatrixResult = $derived(balanceState.result);
+  const matrix: MatrixResult = $derived(balanceState.result2D);
 
   /** Turn a break-index list (one-past-last-item of each line) into renderable lines,
    *  looking up length/score in the shared matrix rather than recomputing them. */
@@ -50,7 +50,7 @@
     buildLines(balanceState.sizes, balanceState.greedyBreaks, matrix, balanceState.capacity),
   );
   const balancedLines = $derived(
-    buildLines(balanceState.sizes, balanceState.result.breaks, matrix, balanceState.capacity),
+    buildLines(balanceState.sizes, balanceState.result2D.breaks, matrix, balanceState.capacity),
   );
 
   const greedyTotal = $derived(greedyLines.reduce((sum, line) => sum + line.score, 0));

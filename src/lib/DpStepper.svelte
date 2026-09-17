@@ -16,6 +16,16 @@
   const atStart = $derived(stepIndex <= -1 || events.length === 0);
   const atEnd = $derived(stepIndex >= events.length - 1);
 
+  // The Lines Left control's own bounds: 1 (the lowest layer worth exposing — see
+  // `balanceState.layer`'s field comment) through `requiredLineCount`, the deepest
+  // layer this input actually needs. A $derived fact about the current inputs, not
+  // a constant, since flex-line-count and item count both change it.
+  const requiredLineCount = $derived(balanceState.result2D.requiredLineCount);
+  const layer = $derived(balanceState.clampedLayer);
+  // Item count, so the template can tell an evaluate event's candidate end apart
+  // from the empty-rest case (end === n) — see the stepper-eval-math branch below.
+  const n = $derived(balanceState.sizes.length);
+
   // Real UI state: whether autoplay is currently running. Nothing about "is the timer
   // ticking right now" can be computed from `sizes`/`capacity`/`stepIndex`, so this is
   // `$state`, not `$derived` — a value with no pure formula behind it has to live as
@@ -46,17 +56,34 @@
     playing = !playing;
   }
 
-  // Changing sizes/capacity/gap produces a new `events` list with an unrelated shape —
-  // clamping alone (see `clampedCellStep`) could still land mid-run of the new list and
-  // show a partially-filled matrix that never actually happened. This effect is a real
-  // side effect (it reaches out and resets state in response to *other* state changing,
-  // there's no expression that "equals" that reset), so it's `$effect`, not `$derived` —
-  // matching the same rule the autoplay timer below follows.
+  // Same commit-time clamp pattern as Controls.svelte's capacity/gap/flex-line-count
+  // fields: a typed value can be out of range or momentarily non-numeric while
+  // editing, so it's only forced back into [1, requiredLineCount] on blur/change,
+  // Both inputs are value + handler rather than `bind:`, because changing layer is not a
+  // plain assignment: `setLayer` also saves this layer's step position and restores the
+  // target's. They display `clampedLayer`, so neither input can show a value outside the
+  // range and no write-through effect is needed to snap them back.
+  function pickLayer(event: Event) {
+    const raw = Number((event.currentTarget as HTMLInputElement).value);
+    if (Number.isFinite(raw)) balanceState.setLayer(raw);
+  }
+
+  // Changing sizes/capacity/gap/flex-line-count produces a new `events` list with an
+  // unrelated shape — clamping alone (see `clampedCellStep`) could still land mid-run of
+  // the new list and show a partially-filled matrix that never actually happened. This
+  // effect is a real side effect (it resets state in response to *other* state changing,
+  // there's no expression that "equals" that reset), so it's `$effect`, not `$derived`.
+  //
+  // It depends on `runSignature`, NOT on `events`. `events` also changes when only the
+  // layer changes, and an effect tracks every reactive value it touches, so reading it
+  // here made this fire on layer moves too and wiped the position `setLayer` had just
+  // restored. Depend on the narrowest thing that means "this is a different run".
   $effect(() => {
-    events;
+    balanceState.runSignature;
     playing = false;
     balanceState.stepIndex = -1;
   });
+
 
   // The play-timer interval is a genuine side effect — it reaches outside reactive state
   // to schedule work over time — so `$effect` is the right rune here, unlike the derived
@@ -108,20 +135,54 @@
     <button type="button" class="stepper-btn" onclick={jumpToEnd} disabled={atEnd}>
       Fill all
     </button>
-    <span class="stepper-progress tnum">{stepIndex + 1} / {events.length}</span>
+    <label class="stepper-layer-field">
+      <span class="stepper-layer-label">Lines Left</span>
+      <input
+        type="range"
+        value={balanceState.clampedLayer}
+        oninput={pickLayer}
+        min={1}
+        max={requiredLineCount}
+        step={1}
+        class="stepper-layer-slider"
+        aria-label="Lines left"
+      />
+      <input
+        type="number"
+        value={balanceState.clampedLayer}
+        onchange={pickLayer}
+        min={1}
+        max={requiredLineCount}
+        step={1}
+        class="field-input stepper-layer-number"
+        aria-label="Lines left, numeric"
+      />
+    </label>
+
+    <span class="stepper-progress tnum stepper-progress--end">{stepIndex + 1} / {events.length}</span>
   </div>
+
 
   <div class="stepper-body">
     {#if evalEvent}
       <p class="stepper-headline tnum">
-        Row <strong>{evalEvent.start}</strong> | Candidate End <strong>{evalEvent.end}</strong>
+        Layer <strong>{layer}</strong> | Row <strong>{evalEvent.start}</strong> | Candidate End <strong>{evalEvent.end}</strong>
       </p>
       <div class="stepper-eval tnum">
         <span class="stepper-eval-range">[{evalEvent.start}, {evalEvent.end})</span>
         <span class="stepper-eval-items">{itemsLabel(evalEvent.start, evalEvent.end)}</span>
         <span class="stepper-eval-math">
-          Reads minScore[<strong>{evalEvent.memoIndex}</strong>] = {fmt(evalEvent.memoValue)}
-          | {fmt(evalEvent.lineScore)} + {fmt(evalEvent.memoValue)} = <strong>{fmt(evalEvent.total)}</strong>
+          {#if evalEvent.end === n}
+            <!-- end === n: the rest is empty. balance.ts's restScoreFor short-circuits
+                 this to a literal 0 before any minScore array read happens — there is no
+                 minScore[n][...] entry to name, so this must never read as a memo lookup
+                 like every other candidate's math line does. -->
+            Empty rest costs 0 (no line owed by nothing)
+            | {fmt(evalEvent.lineScore)} + 0 = <strong>{fmt(evalEvent.total)}</strong>
+          {:else}
+            Reads minScore[<strong>{evalEvent.memoIndex}</strong>][<strong>{evalEvent.memoRemaining ?? 1}</strong>] = {fmt(evalEvent.memoValue)}
+            | {fmt(evalEvent.lineScore)} + {fmt(evalEvent.memoValue)} = <strong>{fmt(evalEvent.total)}</strong>
+          {/if}
         </span>
         {#if evalEvent.isChosen}
           <span class="stepper-eval-tag">Wins So Far</span>
@@ -129,10 +190,10 @@
       </div>
     {:else if settleEvent}
       <p class="stepper-headline tnum">
-        Row <strong>{settleEvent.start}</strong> Settles
+        Layer <strong>{layer}</strong> | Row <strong>{settleEvent.start}</strong> Settles
       </p>
       <p class="stepper-settle tnum">
-        minScore[<strong>{settleEvent.start}</strong>] &larr; <strong>{fmt(settleEvent.settledValue)}</strong>
+        minScore[<strong>{settleEvent.start}</strong>][<strong>{layer}</strong>] &larr; <strong>{fmt(settleEvent.settledValue)}</strong>
         | Now Readable by Rows &lt; {settleEvent.start}
       </p>
     {:else if tracebackEvent}
@@ -147,14 +208,14 @@
     {:else if resultEvent}
       <p class="stepper-headline tnum">Chosen Line Breaks</p>
       <div class="stepper-result">
-        <!-- What balancedLineBreaks actually returns: the end index of each
-             line, in order. The segments and their item sizes were a friendlier
+        <!-- What balancedLineBreaksWithLineCount actually returns: the end index of
+             each line, in order. The segments and their item sizes were a friendlier
              restatement, but the point of the last step is to land on the
              function's own output. -->
         <code class="stepper-breaks tnum">[{resultEvent.breaks.join(', ')}]</code>
       </div>
     {:else}
-      <p class="stepper-headline tnum">Matrix Empty | minScore[n] = 0</p>
+      <p class="stepper-headline tnum">Layer <strong>{layer}</strong> | Press Play To Fill This Layer</p>
     {/if}
   </div>
 </div>
@@ -211,10 +272,109 @@
     color: var(--color-accent);
   }
 
+  .stepper-progress--end {
+    margin-left: auto;
+  }
+
   .stepper-progress {
     margin-left: auto;
     font-size: var(--text-13);
     color: var(--color-text);
+  }
+
+  /* Lines Left: same slider+number pairing as Controls.svelte's CSS inputs, but
+     this is a position in the run, not a CSS property, so it sits here with
+     Reset/back/play/forward/Fill all rather than in Controls.svelte. Reuses
+     .field-input for the number field so both panels' numeric inputs match. */
+  /* Sits in the button row: the layer is a position in the run, like the step index, so
+     it belongs with the controls that move through the run rather than in a band below. */
+  .stepper-layer-field {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-8);
+    margin-left: var(--space-16);
+  }
+
+  .stepper-layer-label {
+    font-size: var(--text-13);
+    font-weight: 500;
+    color: var(--color-text);
+  }
+
+  /* The range is 1..requiredLineCount, so at most ten positions and usually two or
+     three. A full-width track implied far more travel than there is. */
+
+
+  .stepper-layer-number {
+    width: calc(var(--control-height) * 2);
+    flex: none;
+  }
+
+  /* Same track/thumb treatment as Controls.svelte's .field-slider, duplicated
+     rather than shared across files since Svelte scopes component styles. */
+  .stepper-layer-slider {
+    width: calc(var(--space-64) * 2);
+    flex: none;
+    height: var(--control-height);
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+  }
+
+  .stepper-layer-slider:focus-visible {
+    outline: none;
+  }
+
+  .stepper-layer-slider::-webkit-slider-runnable-track {
+    height: var(--space-4);
+    border-radius: var(--radius-6);
+    background: var(--color-hairline);
+  }
+
+  .stepper-layer-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: var(--space-16);
+    height: var(--space-16);
+    margin-top: calc((var(--space-4) - var(--space-16)) / 2);
+    border-radius: var(--radius-8);
+    background: var(--color-accent);
+    border: none;
+    box-shadow: 0 0 0 0 transparent;
+    transition: box-shadow 0.15s ease;
+  }
+
+  .stepper-layer-slider:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 var(--space-4) var(--color-accent-tint);
+  }
+
+  .stepper-layer-slider::-moz-range-track {
+    height: var(--space-4);
+    border-radius: var(--radius-6);
+    background: var(--color-hairline);
+  }
+
+  .stepper-layer-slider::-moz-range-progress {
+    height: var(--space-4);
+    border-radius: var(--radius-6);
+    background: var(--color-accent);
+  }
+
+  .stepper-layer-slider::-moz-range-thumb {
+    width: var(--space-16);
+    height: var(--space-16);
+    border-radius: var(--radius-8);
+    background: var(--color-accent);
+    border: none;
+    box-shadow: 0 0 0 0 transparent;
+    transition: box-shadow 0.15s ease;
+  }
+
+  .stepper-layer-slider:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 var(--space-4) var(--color-accent-tint);
   }
 
   .stepper-body {
@@ -314,34 +474,34 @@
      in meaning. Deterministic at every narrow width, rather than depending on
      where the text happens to break. */
   @media (max-width: 767px) {
+    /* Fixed grid rather than wrapping, so the row never reflows into a ragged shape as
+       button labels change (Play/Pause/Replay). Targeted by type and class instead of
+       nth-child: the layer control joined this row, and positional selectors silently
+       shift by one when a child is added. */
     .stepper-controls {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       row-gap: var(--space-8);
     }
 
-    .stepper-controls > :nth-child(2) {
-      grid-area: 1 / 1 / 2 / 2;
+    .stepper-btn:nth-of-type(2) { grid-area: 1 / 1 / 2 / 2; }
+    .stepper-btn:nth-of-type(3) { grid-area: 1 / 2 / 2 / 3; }
+    .stepper-btn:nth-of-type(4) { grid-area: 1 / 3 / 2 / 4; }
+    .stepper-btn:nth-of-type(1) { grid-area: 2 / 1 / 3 / 3; }
+    .stepper-btn:nth-of-type(5) { grid-area: 2 / 3 / 3 / 4; }
+
+    .stepper-layer-field {
+      grid-area: 3 / 1 / 4 / 4;
+      margin-left: 0;
     }
 
-    .stepper-controls > :nth-child(3) {
-      grid-area: 1 / 2 / 2 / 3;
-    }
-
-    .stepper-controls > :nth-child(4) {
-      grid-area: 1 / 3 / 2 / 4;
-    }
-
-    .stepper-controls > :nth-child(1) {
-      grid-area: 2 / 1 / 3 / 3;
-    }
-
-    .stepper-controls > :nth-child(5) {
-      grid-area: 2 / 3 / 3 / 4;
+    .stepper-layer-slider {
+      flex: 1;
+      width: auto;
     }
 
     .stepper-progress {
-      grid-area: 3 / 1 / 4 / 4;
+      grid-area: 4 / 1 / 5 / 4;
       text-align: right;
     }
   }

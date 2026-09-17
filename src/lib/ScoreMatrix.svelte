@@ -19,12 +19,30 @@
   // against.
   const cols = $derived(Array.from({ length: n }, (_, i) => i + 1)); // end: 1..n
 
-  const { len, bestEnd } = $derived(balanceState.result);
+  const { len } = $derived(balanceState.result2D);
+
+  // The layer this matrix is currently showing ("Lines Left"), and the layer
+  // beneath it the memo row reads from — `Math.max(remaining - 1, 1)`, same rule
+  // `traceCellEventsForLayer` documents in balance.ts. There is no layer 0: a
+  // non-empty rest always owes at least one line, so the shallower layer floors
+  // at 1, never 0. Both are facts about the current inputs, not UI state of
+  // their own: DpStepper owns the control that writes `balanceState.layer`, this
+  // component only reads the clamped result.
+  const remaining = $derived(balanceState.clampedLayer);
+  const successorRemaining = $derived(Math.max(remaining - 1, 1));
+
+  // bestEnd[start][remaining] for the SELECTED layer — the 2D DP's own answer for
+  // this layer, not the 1D `bestEnd` (which only ever describes layer 0/the
+  // unconstrained problem). Used the same way the 1D version was: solely to
+  // cross-check the running mark at settle time (see the $effect below).
+  const bestEnd2D = $derived(balanceState.result2D.bestEnd);
+  const minScores2D = $derived(balanceState.result2D.minScores);
 
   // The largest `end` genuinely considered for each `start` — the DP never looks
   // past this, because a line stretching further has already overflowed. A cell
   // beyond it has score 0 by the algorithm's definition (overflow, not "cheap"),
-  // so it must never be compared against real totals.
+  // so it must never be compared against real totals. Independent of layer: this
+  // is a fact about sizes/capacity/gap alone.
   const fittingEnd = $derived(lastFittingEnd(balanceState.sizes, balanceState.capacity, balanceState.gap));
 
   function isEligible(start: number, end: number): boolean {
@@ -49,14 +67,24 @@
     return end > start && isOverflowingLine(len, start, end, balanceState.capacity);
   }
 
-  // bestEnd[start] is, by definition, the end that achieves minScores[start] —
-  // the row's minimum total, known only once the whole row has been scanned.
-  // Used solely to cross-check the running mark below at settle time; the
-  // rendered white box itself must never read this array directly (see
-  // runningBestEndAtStep), or it would show the winner before the scan that
-  // decides it has finished.
+  // A row with no candidate at all in the SELECTED layer: `minScores[start][remaining]`
+  // is `null` exactly when too few items remain to cover the lines still owed (see
+  // Balance2DResult's own doc comment in balance.ts). Distinct from both a void cell
+  // (end <= start, a fact about coordinates) and a not-yet-revealed cell (genuinely
+  // unknown until its own evaluate event fires) — this is neither: the row is known,
+  // up front, to never produce an event at all, at this layer.
+  function isUnreachableRow(start: number): boolean {
+    return minScores2D[start]?.[remaining] == null;
+  }
+
+  // bestEnd[start][remaining] is, by definition, the end that achieves
+  // minScores[start][remaining] for the SELECTED layer — the row's minimum total,
+  // known only once the whole row has been scanned. Used solely to cross-check the
+  // running mark below at settle time; the rendered white box itself must never
+  // read this array directly (see runningBestEndAtStep), or it would show the
+  // winner before the scan that decides it has finished.
   function isRowMinimum(start: number, end: number): boolean {
-    return bestEnd[start] === end;
+    return bestEnd2D[start]?.[remaining] === end;
   }
 
   // The running best-so-far, replaying the DP's own scan one revealed candidate
@@ -152,20 +180,24 @@
     return map;
   });
 
-  // Live memo, rebuilt from the settle events seen so far. `null` means "not
-  // computed yet" — genuinely unknown, not a sentinel value — for every index
-  // except n (the base case: best total for everything after the last item is
-  // 0, the one fact that makes the first row computable at all, so it's known
-  // before any event fires). Each settle event flips exactly one more entry
-  // from null to its real number; nothing is ever shown as Infinity here,
-  // because the viewer has no way to tell "shown Infinity" from "not yet run"
-  // apart — the whole point is that blank *is* the "not yet run" signal.
+  // Live memo, rebuilt from the evaluate events seen so far — the layer BENEATH
+  // the selected one, since `ev.memoValue` is exactly `minScores[ev.memoIndex]
+  // [successorRemaining]` (see CellEvaluateEvent's own doc comment in balance.ts).
+  // That shallower layer is already fully solved before this layer's own trace
+  // begins (`traceCellEventsForLayer`'s doc comment), so every value here is a
+  // constant for the whole run — but it's still revealed progressively, the first
+  // time a candidate in the current layer actually reads it, so the matrix keeps
+  // the same "starts empty, fills as the algorithm looks at it" teaching the
+  // candidate cells use, rather than dumping the whole shallower layer up front.
+  // `null` means "not yet read at this layer" — genuinely means nothing has asked
+  // for it yet, not that it's unknown — for every index except n (the base case:
+  // best total for covering nothing, with no lines left owed, is 0).
   const liveMemo: (number | null)[] = $derived.by(() => {
     const memo = new Array<number | null>(n + 1).fill(null);
     memo[n] = 0;
     for (let i = 0; i <= cellStep; i++) {
       const ev = events[i];
-      if (ev?.kind === 'settle') memo[ev.start] = ev.settledValue;
+      if (ev?.kind === 'evaluate') memo[ev.memoIndex] = ev.memoValue;
     }
     return memo;
   });
@@ -182,32 +214,35 @@
     return settled;
   });
 
-  // The single event this step reveals, so a just-settled row/memo entry can get
-  // a moment of distinct emphasis (the settle instant the task calls out as the
-  // point: the same number landing in both the settles-at column and the memo row).
+  // The single event this step reveals, so a just-settled row can get a moment
+  // of distinct emphasis in the settles-at column (see `justSettledMemo`, used
+  // there — the memo row's own "just discovered" cue is `isReadingMemo`/
+  // `matrix-minscore--reading` instead, since a row settling in the SELECTED
+  // layer is a different moment from a memo entry in the layer BENEATH it
+  // being read; the two no longer coincide the way they did in the 1D matrix).
   const currentEvent = $derived(cellStep >= 0 ? events[cellStep] : undefined);
 
   // Consistency guard, not a rendering concern: at the exact step a row settles,
-  // the running mark's current end for that row must equal bestEnd[start] — the
-  // DP's own answer. This is a genuine side effect (a console assertion against
-  // the outside world), never a derived value, so it belongs in $effect rather
-  // than in one of the $derived.by blocks above. A mismatch means the `<=` replay
-  // above has drifted from balance.ts's own comparison, which is a bug to surface
-  // loudly, not swallow.
+  // the running mark's current end for that row must equal bestEnd[start][remaining]
+  // for the SELECTED layer — the DP's own answer. This is a genuine side effect (a
+  // console assertion against the outside world), never a derived value, so it
+  // belongs in $effect rather than in one of the $derived.by blocks above. A
+  // mismatch means the `<=` replay above has drifted from balance.ts's own
+  // comparison, which is a bug to surface loudly, not swallow.
   //
-  // The `bestEnd[start]` column renders this exact same `runningBestEndAtStep`
-  // value (see the template), so this one check already covers both the white
-  // row-minimum mark and the column: there's no second read of `bestEnd` to
-  // duplicate the assertion for, and no way for the column to diverge from the
-  // mark without also tripping this same error.
+  // The `bestEnd[start][remaining]` column renders this exact same
+  // `runningBestEndAtStep` value (see the template), so this one check already
+  // covers both the white row-minimum mark and the column: there's no second
+  // read of `bestEnd2D` to duplicate the assertion for, and no way for the
+  // column to diverge from the mark without also tripping this same error.
   $effect(() => {
     const ev = currentEvent;
     if (ev?.kind !== 'settle') return;
     const runningEnd = runningBestEndAtStep.get(ev.start);
-    if (runningEnd !== bestEnd[ev.start]) {
+    if (runningEnd !== bestEnd2D[ev.start]?.[remaining]) {
       console.error(
-        `[ScoreMatrix] running best-so-far mark (and bestEnd[start] column) diverged from bestEnd at settle: ` +
-          `start=${ev.start} runningEnd=${runningEnd} bestEnd=${bestEnd[ev.start]}`,
+        `[ScoreMatrix] running best-so-far mark (and bestEnd[start][${remaining}] column) diverged from bestEnd at settle: ` +
+          `start=${ev.start} runningEnd=${runningEnd} bestEnd=${bestEnd2D[ev.start]?.[remaining]}`,
       );
     }
   });
@@ -404,24 +439,24 @@
   const candidateMinWidth = $derived(Math.max(middleRegionWidth / 5, decompositionFloorWidth));
 
   // The widest decomposition text ("lineScore + memoValue") this run will ever
-  // reveal, computed from the full score/minScores matrices — not from
-  // whichever cells the animation has revealed *so far*. Using only the
-  // revealed-so-far text would let the floor grow mid-run as later, wider
-  // numbers appear, which would resize the column (and therefore the table)
-  // partway through the fill — exactly the reflow the task requires *not* to
-  // happen between the empty and filled states. Every eligible, non-overflowing
-  // (start, end) pair's total is known up front from `balanceState.result`
-  // regardless of playback step, so the widest string is a fact about the
-  // current sizes/capacity/gap inputs, never about how far the stepper has
-  // gotten.
+  // reveal, computed from the full score matrix and the SELECTED layer's memo
+  // (minScores2D[...][successorRemaining]) — not from whichever cells the
+  // animation has revealed *so far*. Using only the revealed-so-far text would
+  // let the floor grow mid-run as later, wider numbers appear, which would
+  // resize the column (and therefore the table) partway through the fill —
+  // exactly the reflow the task requires *not* to happen between the empty and
+  // filled states. Every eligible, non-overflowing (start, end) pair's total is
+  // known up front regardless of playback step, so the widest string is a fact
+  // about the current sizes/capacity/gap/flex-line-count/layer inputs, never
+  // about how far the stepper has gotten.
   const widestDecompositionText = $derived.by(() => {
     let widest = '';
-    const { score, minScores } = balanceState.result;
+    const { score } = balanceState.result2D;
     for (let start = 0; start < n; start++) {
       for (let end = start + 1; end <= fittingEnd[start]; end++) {
         if (isOverflowingLine(len, start, end, balanceState.capacity)) continue;
         const lineScore = score[start][end];
-        const memoValue = minScores[end];
+        const memoValue = minScores2D[end]?.[successorRemaining];
         if (lineScore == null || memoValue == null) continue;
         const text = `${lineScore} + ${memoValue}`;
         if (text.length > widest.length) widest = text;
@@ -440,12 +475,12 @@
   // the full matrix, not from playback progress" reasoning as above.
   const widestTotalText = $derived.by(() => {
     let widest = '';
-    const { score, minScores } = balanceState.result;
+    const { score } = balanceState.result2D;
     for (let start = 0; start < n; start++) {
       for (let end = start + 1; end <= fittingEnd[start]; end++) {
         if (isOverflowingLine(len, start, end, balanceState.capacity)) continue;
         const lineScore = score[start][end];
-        const memoValue = minScores[end];
+        const memoValue = minScores2D[end]?.[successorRemaining];
         if (lineScore == null || memoValue == null) continue;
         const text = String(lineScore + memoValue);
         if (text.length > widest.length) widest = text;
@@ -592,12 +627,16 @@
       <span class="legend-mark legend-mark--overflow">&infin;</span>
       Overflows
     </span>
+    <span class="legend-item">
+      <span class="legend-swatch legend-swatch--unreachable"></span>
+      Unreachable Row
+    </span>
     <span class="legend-item legend-item--axes">
       <span>Start<span class="axis-word">&nbsp;Index</span> &darr;</span>
       <span>End<span class="axis-word">&nbsp;Index</span> &rarr;</span>
     </span>
-    <span class="legend-item legend-item--key" aria-label="cell total equals free squared plus minScore at end">
-      <code class="legend-key-code">total[start, end) = free[start, end)² + minScore[end]</code>
+    <span class="legend-item legend-item--key" aria-label="cell total equals free squared plus minScore at end for the layer beneath the selected one">
+      <code class="legend-key-code">total[start, end) = free[start, end)² + minScore[end][{successorRemaining}]</code>
     </span>
   </div>
 
@@ -628,10 +667,11 @@
                 <svg class="corner-diagonal" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                   <line x1="0" y1="0" x2="100" y2="100" />
                 </svg>
-                <!-- Named in the triangles the diagonal already makes, which reads more
-                     directly than stating the axes over in the legend. Hidden below
-                     768px, where a 40px corner cannot hold two words and the legend
-                     names them instead. -->
+                <!-- >=768px only (see `.corner-label` in the stylesheet): the corner
+                     has room for the diagonal plus one word in each triangle, so the
+                     axis names live here instead of in the legend line, never both
+                     places at once (see `.legend-item--axes`'s own media query
+                     below, which hides the legend's copy at this same width). -->
                 <span class="corner-label corner-label--start">start</span>
                 <span class="corner-label corner-label--end">end</span>
               </div>
@@ -651,17 +691,25 @@
                    `.matrix-sticky-col`/`.matrix-row-head`, media-queried down
                    to 40px below 768px) is never fought by this cell's own
                    content the way the 152px-wide label text used to fight it. -->
-              {#if !isNarrow}<code>minScore[end]</code>{/if}
+              {#if !isNarrow}<code>minScore[end][{successorRemaining}]</code>{/if}
             </th>
             {#each cols as end (end)}
-              {@const memoJustSettled = justSettledMemo(end)}
               {@const memoReading = isReadingMemo(end)}
               {@const memoVal = liveMemo[end]}
+              {@const baseCase = end === n}
               <th
-                class={['matrix-minscore', 'tnum', memoJustSettled && 'matrix-minscore--justsettled', memoReading && 'matrix-minscore--reading']}
+                class={['matrix-minscore', 'tnum', memoReading && 'matrix-minscore--reading', baseCase && 'matrix-minscore--basecase']}
                 style={`height: ${headRowTwoHeight}`}
+                title={baseCase ? 'empty rest: covering nothing costs 0 — not a memo lookup' : undefined}
               >
-                {#if memoVal != null}
+                {#if baseCase}
+                  <!-- end === n has no memo entry: minScore[n][...] does not exist in the
+                       re-ported table (see balance.ts's restScoreFor: `end === n` short-
+                       circuits to a literal 0, never an array read). This is the recurrence's
+                       base case — an empty rest costs nothing — not a settled DP value like
+                       every other column here, so it must never look like one of them. -->
+                  <span class="matrix-minscore-basecase-value">0</span>
+                {:else if memoVal != null}
                   {fmtLive(memoVal)}
                 {/if}
               </th>
@@ -670,6 +718,7 @@
         </thead>
         <tbody>
           {#each rows as start (start)}
+            {@const unreachableRow = isUnreachableRow(start)}
             <tr class:matrix-row--active={start === activeStart} style={`height: var(--row-h)`}>
               <th class="matrix-row-head matrix-sticky-col tnum" scope="row">{start}</th>
               {#each cols as end (end)}
@@ -692,9 +741,19 @@
                     current && 'matrix-cell--current',
                     probeDiscovery && 'matrix-cell--probe-discovery',
                     probeConsequence && 'matrix-cell--probe-consequence',
+                    !voidCell && unreachableRow && 'matrix-cell--unreachable',
                   ]}
                 >
-                  {#if shown && cell}
+                  {#if !voidCell && unreachableRow}
+                    <!-- Structurally unreachable at this layer: too few items remain
+                         to cover the lines still owed (minScores[start][remaining] is
+                         null — see isUnreachableRow). Distinct from a void cell (a fact
+                         about coordinates, crossed diagonals) and from a not-yet-revealed
+                         cell (a skeleton, genuinely pending): this row will never fire an
+                         evaluate event at all at this layer, so it reads as permanently
+                         inapplicable via a diagonal hatch and a dash, never a number. -->
+                    <div class="matrix-cell-unreachable" title="unreachable: too few items remain for the lines still owed">&mdash;</div>
+                  {:else if shown && cell}
                     {#if overflow}
                       <div class="matrix-cell-inf-solo" title="overflow: length exceeds capacity">&infin;</div>
                     {:else}
@@ -746,24 +805,37 @@
     <div class="matrix-summary" bind:this={summaryEl}>
       <div class="matrix-summary-wide">
         <div class="matrix-summary-col matrix-summary-col--settled">
-          <div class="matrix-summary-head" style={`height: calc(${headRowOneHeight} + ${headRowTwoHeight})`}><code>minScore[start]</code></div>
+          <!-- No second header box here: the memo row (table row 2) is indexed by
+               `end`, this column is indexed by `start` — there is no value that
+               belongs in a cell aligned with it, so the old `--sub` box held
+               nothing meaningful. Its ROLE (reserving the memo row's height so
+               this column's body rows still line up with the table's body rows)
+               still has to happen somewhere: folded into this one label box
+               instead, sized to `headRowOneHeight + headRowTwoHeight` so it spans
+               both of the table's header rows at once, rather than splitting a
+               real reservation from an empty one across two boxes. -->
+          <div class="matrix-summary-head" style={`height: calc(${headRowOneHeight} + ${headRowTwoHeight})`}><code class="matrix-summary-head-code"><span>minScore</span><span>[start][{remaining}]</span></code></div>
           {#each rows as start (start)}
+            {@const unreachableRow = isUnreachableRow(start)}
             <div
-              class={['matrix-summary-cell', 'tnum', justSettledMemo(start) && 'matrix-summary-cell--justsettled']}
+              class={['matrix-summary-cell', 'tnum', justSettledMemo(start) && 'matrix-summary-cell--justsettled', unreachableRow && 'matrix-summary-cell--unreachable']}
               class:matrix-row--active={start === activeStart}
               style={`height: var(--row-h)`}
             >
-              {#if liveSettled[start] != null}
+              {#if unreachableRow}
+                &mdash;
+              {:else if liveSettled[start] != null}
                 {fmtLive(liveSettled[start])}
               {/if}
             </div>
           {/each}
         </div>
         <div class="matrix-summary-col matrix-summary-col--bestend">
-          <div class="matrix-summary-head" style={`height: calc(${headRowOneHeight} + ${headRowTwoHeight})`}><code>bestEnd[start]</code></div>
+          <div class="matrix-summary-head" style={`height: calc(${headRowOneHeight} + ${headRowTwoHeight})`}><code class="matrix-summary-head-code"><span>bestEnd</span><span>[start][{remaining}]</span></code></div>
           {#each rows as start (start)}
             {@const runningEnd = runningBestEndAtStep.get(start)}
             {@const bestEndChosen = runningEnd != null && isChosen(start, runningEnd)}
+            {@const unreachableRow = isUnreachableRow(start)}
             <div
               class={[
                 'matrix-summary-cell',
@@ -771,11 +843,14 @@
                 'tnum',
                 justSettledMemo(start) && 'matrix-summary-cell--justsettled',
                 bestEndChosen && 'matrix-summary-cell--bestend-chosen',
+                unreachableRow && 'matrix-summary-cell--unreachable',
               ]}
               class:matrix-row--active={start === activeStart}
               style={`height: var(--row-h)`}
             >
-              {#if runningEnd != null}
+              {#if unreachableRow}
+                &mdash;
+              {:else if runningEnd != null}
                 {runningEnd}
               {/if}
             </div>
@@ -788,30 +863,39 @@
            the same two header rows the wide layout uses, `minScore` in row 1
            and `bestEnd` in row 2, dropping the `[start]` suffix — every row
            IS a start, and the table's own corner cell already says so — so
-           both labels fit ~80px without clipping. -->
+           both labels fit ~80px without clipping. The layer number still
+           appears, in brackets, since which layer is on screen is the one
+           fact this control adds that "every row IS a start" doesn't already
+           cover. -->
       <div class="matrix-summary-narrow">
         <!-- One header box, matching the table's own first header row (the
              column-index row) at this width. -->
         <div class="matrix-summary-head matrix-summary-head--narrow" style={`height: ${headRowOneHeight}`}>
-          <span>minScore</span>
-          <span class="matrix-summary-head--bestend-label">bestEnd</span>
+          <span>minScore[{remaining}]</span>
+          <span class="matrix-summary-head--bestend-label">bestEnd[{remaining}]</span>
         </div>
         {#each rows as start (start)}
           {@const runningEnd = runningBestEndAtStep.get(start)}
           {@const bestEndChosen = runningEnd != null && isChosen(start, runningEnd)}
+          {@const unreachableRow = isUnreachableRow(start)}
           <div
-            class={['matrix-summary-cell--stacked', justSettledMemo(start) && 'matrix-summary-cell--justsettled']}
+            class={['matrix-summary-cell--stacked', justSettledMemo(start) && 'matrix-summary-cell--justsettled', unreachableRow && 'matrix-summary-cell--unreachable']}
             class:matrix-row--active={start === activeStart}
             style={`height: var(--row-h)`}
           >
-            <span class="matrix-summary-stacked-value tnum">
-              {#if liveSettled[start] != null}{fmtLive(liveSettled[start])}{/if}
-            </span>
-            <span
-              class={['matrix-summary-stacked-value', 'matrix-summary-cell--bestend', 'tnum', bestEndChosen && 'matrix-summary-cell--bestend-chosen']}
-            >
-              {#if runningEnd != null}{runningEnd}{/if}
-            </span>
+            {#if unreachableRow}
+              <span class="matrix-summary-stacked-value tnum">&mdash;</span>
+              <span class="matrix-summary-stacked-value matrix-summary-cell--bestend tnum">&mdash;</span>
+            {:else}
+              <span class="matrix-summary-stacked-value tnum">
+                {#if liveSettled[start] != null}{fmtLive(liveSettled[start])}{/if}
+              </span>
+              <span
+                class={['matrix-summary-stacked-value', 'matrix-summary-cell--bestend', 'tnum', bestEndChosen && 'matrix-summary-cell--bestend-chosen']}
+              >
+                {#if runningEnd != null}{runningEnd}{/if}
+              </span>
+            {/if}
           </div>
         {/each}
       </div>
@@ -895,6 +979,23 @@
     box-shadow: inset 0 0 0 1px var(--color-hairline);
   }
 
+  /* Unreachable row (layer above 1 only): same diagonal-hatch treatment as the
+     real cell (see .matrix-cell-unreachable below), scaled to swatch size, so the
+     legend key and the cell content agree on what "unreachable" looks like. Never
+     the void swatch's flat neutral fill (a different fact: void is about
+     coordinates, this is about the layer not having enough items left) and never
+     the overflow red (a different fact again: overflow is a real, evaluated
+     candidate that costs 0; unreachable is never evaluated at all). */
+  .legend-swatch--unreachable {
+    background: repeating-linear-gradient(
+      45deg,
+      var(--color-text-secondary) 0 1px,
+      transparent 1px 4px
+    );
+    opacity: 0.6;
+    box-shadow: inset 0 0 0 1px var(--color-hairline);
+  }
+
   /* Overflow legend glyph: same infinity mark used inline on overflowing cells,
      so the legend and the cell content read as the same symbol, not a color key.
      The tint background matches the overflowing cell's own background, so the
@@ -917,11 +1018,12 @@
   /* The visible arithmetic key: names the two parts every cell's breakdown
      subtext already shows (own line's score, then the rest), so the subtext
      never needs its own inline prose — it just reads against this key instead. */
-  /* Names both axes once, here, rather than in the corner cell: that cell is
-     40px wide on a phone, and two words plus a diagonal cannot share it. The
-     diagonal still shows the split; these say which side is which. Sits at the
-     left of the same line the arithmetic key ends, since the key already
-     pushes itself right. */
+  /* Below 768px only (see the min-width override further below): the corner
+     is 40px wide there and can hold the diagonal alone, not a word in each
+     triangle too, so this line states which axis is which instead. At
+     >=768px the corner itself carries "start"/"end" (see `.corner-label`
+     above) and this line is hidden — the same fact must never be stated in
+     both places at once. */
   .legend-item--axes {
     gap: var(--space-12);
     font-variant-numeric: tabular-nums;
@@ -957,9 +1059,18 @@
   .matrix-panel-body {
     display: flex;
     align-items: stretch;
-    /* Brighter than the hairlines inside it, so the matrix reads as one framed
-       object rather than a grid that happens to stop. Weight alone did not carry
-       that: a thicker hairline still looked like a gridline. */
+    /* Primary-text color, not the hairline: this frame separates two KINDS of
+       thing, the DP table on the left from the per-row summary fields on the
+       right — a real structural boundary, not one more gridline. Every rule
+       INSIDE this frame (between candidate columns, between rows, between the
+       two summary columns) still separates cells of the SAME kind, so those
+       stay on the quiet hairline; only this outer edge and the seam right
+       before the summary block (see `.matrix-summary-col--settled` below) get
+       the heavier treatment, and both use the same color/weight so the two
+       KIND-boundaries read as one consistent language rather than two
+       different guesses at "important". Weight stays the same
+       `space-8 / 4` composed value the hairline frame used before —
+       thickening further wasn't the fix; the right color was. */
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-10);
     overflow: hidden;
@@ -1077,8 +1188,30 @@
      edge is the seam between the scrolling candidates and the fixed summary,
      and nothing else draws it. The summary block sits outside the scroller, so
      the line is static and cannot double against a scrolling neighbour. */
+  /* Same primary-text color as the panel's outer frame, not the hairline: this
+     seam is the same KIND of boundary as that frame — the table's candidate
+     columns end here and the per-row summary fields begin — never one more
+     gridline between cells of the same kind (that's what the hairline between
+     the two summary columns themselves, `.matrix-summary-col + .matrix-summary-col`
+     below, is for). Same weight as the frame too, so the two KIND-boundaries
+     read as one consistent rule rather than two separately-tuned guesses. */
   .matrix-summary-col--settled {
     border-left: 1px solid var(--color-border-strong);
+  }
+
+  /* The label is too long for the column at one line, and left to itself the browser
+     broke it before the layer index, orphaning a bare "[1]" on the second line and
+     reading like a stray footnote. Break it deliberately between the identifier and
+     its indices instead, and never inside either half. */
+  .matrix-summary-head-code {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.25;
+  }
+
+  .matrix-summary-head-code span {
+    white-space: nowrap;
   }
 
   .matrix-summary-head {
@@ -1093,6 +1226,12 @@
     border-bottom: 1px solid var(--color-hairline);
   }
 
+  /* No row-2 header rule here anymore: the memo row (table row 2) is indexed by
+     `end`; minScore[start]/bestEnd[start] are indexed by `start`, so no value in
+     either summary column ever belonged in a cell aligned with that row. The
+     height that empty box used to reserve is now folded directly into
+     `.matrix-summary-head`'s own inline height (row 1 + row 2 combined, see the
+     template) instead of a second box holding nothing. */
 
   .matrix-corner,
   .matrix-head,
@@ -1147,24 +1286,6 @@
     height: 100%;
   }
 
-  .corner-label {
-    position: absolute;
-    font-size: var(--text-13);
-    font-weight: 400;
-    color: var(--color-text-secondary);
-    pointer-events: none;
-  }
-
-  .corner-label--start {
-    left: var(--space-8);
-    bottom: var(--space-4);
-  }
-
-  .corner-label--end {
-    right: var(--space-8);
-    top: var(--space-4);
-  }
-
   .corner-diagonal {
     position: absolute;
     inset: 0;
@@ -1176,6 +1297,35 @@
     stroke: var(--color-hairline);
     stroke-width: 1px;
     vector-effect: non-scaling-stroke;
+  }
+
+  /* The two axis words the diagonal alone used to only imply. "start" sits in
+     the lower-left triangle (reads against the row axis below it, down the
+     sticky index column); "end" in the upper-right (reads against the column
+     axis beside it, along the header row) — same placement the split-corner
+     convention was always meant to carry, restored here rather than left to
+     the legend to state a second time. `position: absolute` within
+     `.corner-split-inner`'s own relative box, one word each, small enough
+     (`--text-13`, the table's own base size) to clear the diagonal in a
+     48px-tall corner without touching it. Hidden below 768px (see the media
+     query at the bottom of this file): a 40px-wide corner at that width has
+     room for the diagonal alone, not two words beside it, which is why the
+     legend keeps stating both names there instead. */
+  .corner-label {
+    position: absolute;
+    font-size: var(--text-13);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  .corner-label--start {
+    left: var(--space-8);
+    bottom: var(--space-4);
+  }
+
+  .corner-label--end {
+    right: var(--space-8);
+    top: var(--space-4);
   }
 
   /* Row 2's own leading cell — the `minScore[end]` label. Opaque background
@@ -1196,6 +1346,24 @@
        does not inherit that rule's right edge, and the index column's own
        border stopped for exactly one row. */
     border-right: 1px solid var(--color-hairline);
+  }
+
+  /* Flattens the global `code` chip's own padding/inline-flex box (same
+     reasoning as `.legend-key-code` and `.matrix-memo-label code` elsewhere in
+     this file) so this cell's height is exactly the `<th>`'s own padding plus
+     one line of text. Left as the default chip, the chip's own
+     `--space-4`/`--space-8` padding stacked on top of this `<th>`'s own
+     padding, and row 2 of the header rendered past its declared
+     `headRowTwoHeight` (measured ~54px against a declared 36px) — pushing
+     every body row in the table down by that same excess and misaligning it
+     against the summary block's rows, which read the same `headRowTwoHeight`
+     constant but never had a second chip's padding stacked on top of it. */
+  .matrix-corner--sub code {
+    display: inline;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    color: inherit;
   }
 
   /* Narrow-only spanning label row (see the template's `{#if isNarrow}`
@@ -1417,6 +1585,31 @@
     height: 100%;
   }
 
+  /* Unreachable-row cell (layer above 1 only): same reserved box, filled with a
+     diagonal hatch and a dash rather than a number — this row's minScore is
+     null at this layer, so it never fires an evaluate event at all and must
+     never look like "not yet revealed" (a plain skeleton) or "void" (crossed
+     diagonals, a fact about start/end coordinates instead of about the layer).
+     `matrix-cell--unreachable` on the parent `<td>` carries the background
+     hatch; this inner div only centers the dash glyph, same layout role
+     `.matrix-cell-void`'s own inner div plays for its diagonals. */
+  .matrix-cell--unreachable {
+    background: repeating-linear-gradient(
+      45deg,
+      var(--color-hairline) 0 1px,
+      transparent 1px 6px
+    );
+  }
+
+  .matrix-cell-unreachable {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-size: var(--text-15);
+    color: var(--color-text-secondary);
+  }
+
   /* The step currently being evaluated: a quiet outline, not a fill, so it
      reads as "in progress" rather than competing with the settled rowmin/chosen
      rings. Kept subtle per the no-bounce/no-glow constraint — a static ring,
@@ -1481,6 +1674,21 @@
     background: var(--color-accent-tint);
     color: var(--color-accent);
     font-weight: 600;
+  }
+
+  /* Same unreachable-row hatch the grid cells use (see .matrix-cell--unreachable),
+     so this row's summary values read as "will never settle at this layer"
+     rather than "not yet settled" — a dash, never a number, and it wins over
+     the bold/accent treatments above since a row that can't be reached also
+     can't be just-settled or on the chosen path. */
+  .matrix-summary-cell--unreachable {
+    background: repeating-linear-gradient(
+      45deg,
+      var(--color-hairline) 0 1px,
+      transparent 1px 6px
+    );
+    color: var(--color-text-secondary);
+    font-weight: 500;
   }
 
   /* Makes the traceback's walk visible in this column too: once this row's
@@ -1599,14 +1807,24 @@
      ahead of it. Full styling below, after --chosen, so it wins the cascade
      on cells that are both. */
 
-  /* The instant a row settles: its own minScore and the memo entry at that same
-     index become the same visible number at the same moment. A brief accent
-     tint on both cells (no motion, no glow) is the only cue tying them together
-     — subtle per the "no bounce/no glow" transition constraint. */
-  .matrix-minscore--justsettled {
-    background: var(--color-accent-tint);
-    color: var(--color-accent);
-    font-weight: 600;
+  /* end === n: the base case, not a memo entry. minScore[n][...] is never read —
+     see balance.ts's restScoreFor, which short-circuits an empty rest to a literal
+     0 before any array index happens. Every other column in this row is a settled
+     DP value (bold, primary-text, identical to a real minScore[end][remaining]);
+     this one is neither settled nor looked up, so it renders secondary-text and
+     italic — visibly a different KIND of fact from its neighbours, not a quieter
+     copy of the same fact. Declared before --reading below, never after: a base
+     case is never "currently being read" in practice (isReadingMemo only fires
+     for a real memoIndex an evaluate event points at, and restScoreFor never
+     assigns memoIndex = n for a non-empty rest), but keeping --reading later in
+     source order means it would still win the cascade if that ever changed,
+     rather than silently losing to this rule. */
+  .matrix-minscore--basecase {
+    font-style: italic;
+  }
+
+  .matrix-minscore-basecase-value {
+    color: var(--color-text-secondary);
   }
 
   /* The memo entry the current evaluate step is reading from — a quiet ring,
@@ -1695,6 +1913,16 @@
     color: var(--color-overflow);
   }
 
+  /* >=768px: the corner cell states the axes itself (see `.corner-label`
+     above), so the legend must not repeat the same fact — one boundary,
+     paired with the corner's own `@media (max-width: 767px)` hide below, so
+     the two never both show and never both hide at once. */
+  @media (min-width: 768px) {
+    .legend-item--axes {
+      display: none;
+    }
+  }
+
   /* Below 768px: the narrow layout described at the top of the file (three
      space-saving changes, each moving information rather than losing it):
        1. Cell decomposition subtext hidden; total-only, one-line reservation.
@@ -1710,19 +1938,7 @@
      these selectors match, so the wide layout (verified byte-identical: 152px
      index column, five 122.4px candidate columns, two 152px summary columns)
      is completely untouched. */
-  /* The corner names the axes at this width, so the legend saying it too would state
-     one fact twice. Below 768px this flips: the corner is 40px and the legend owns it. */
-  @media (min-width: 768px) {
-    .legend-item--axes {
-      display: none;
-    }
-  }
-
   @media (max-width: 767px) {
-    .corner-label {
-      display: none;
-    }
-
     /* (1) Totals only. The placeholder's second reserved line and the real
        breakdown line both disappear, and .matrix-cell's own reserved height
        drops from a two-line to a one-line box to match — a total alone never
@@ -1730,6 +1946,15 @@
        tall empty gap under every filled cell. */
     .matrix-cell-breakdown,
     .matrix-cell-placeholder-line:last-child {
+      display: none;
+    }
+
+    /* A 40px-wide corner (see .matrix-sticky-col's own narrow override below)
+       has room for the diagonal alone, not the diagonal plus a word in each
+       triangle — the legend's own axis names (.legend-item--axes, always
+       visible below 768px, see the default rule above) are what state the
+       fact at this width instead. */
+    .corner-label {
       display: none;
     }
 
@@ -1776,11 +2001,12 @@
       display: flex;
       flex-direction: column;
       width: calc(var(--space-64) + var(--space-16));
-      /* The seam between the scrolling candidates and this column. Its rows
-         line up with the table's exactly (measured 0px offset), but with no
-         vertical rule and the row separators alone, the stacked pairs read as
-         floating free of the rows they belong to. */
-      border-left: 1px solid var(--color-hairline);
+      /* Same boundary as the wide layout's `.matrix-summary-col--settled` seam,
+         same weight, same primary-text color: table ends, per-row summary
+         begins — a KIND boundary, not a gridline, whether the summary is two
+         wide columns or this one narrow one. Its rows line up with the
+         table's exactly (measured 0px offset). */
+      border-left: 1px solid var(--color-border-strong);
     }
 
 
