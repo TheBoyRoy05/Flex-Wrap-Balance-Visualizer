@@ -597,7 +597,7 @@
       <span>End<span class="axis-word">&nbsp;Index</span> &rarr;</span>
     </span>
     <span class="legend-item legend-item--key" aria-label="cell total equals free squared plus minScore at end">
-      <code class="legend-key-code">total = free² + minScore[end]</code>
+      <code class="legend-key-code">total[start, end) = free[start, end)² + minScore[end]</code>
     </span>
   </div>
 
