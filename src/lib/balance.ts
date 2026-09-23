@@ -200,6 +200,42 @@ export function balancedLineBreaksWithLineCount(
     return { breaks: [n], minScores, bestEnd, score, len, requiredLineCount };
   }
 
+  // Asking for at least as many lines as there are items forces the answer. Every line holds at
+  // least one item, so n items spread over AT LEAST n lines is exactly n lines of one item each —
+  // there is no second partition to compare against, and nothing for the DP to minimise. The
+  // condition is free: `requiredLineCount` is already `min(flexLineCount, n)` above, so it equals
+  // n precisely when the caller asked for n or more.
+  //
+  // Worth taking rather than leaving to the general loop, because this is the loop's HEAVIEST
+  // configuration: the layer axis runs to `requiredLineCount`, so it would spend O(n^2 * L) work
+  // rediscovering a fixed result. It is also the only path that performs no squared-free-space
+  // arithmetic at all, which is exactly the arithmetic WebCore needs UInt128 for.
+  //
+  // The tables are filled along the forced diagonal only, which is what the DP itself would have
+  // settled: at `start` the sole line is [start, start + 1), and covering the rest costs the sum of
+  // the remaining singleton lines. Rows off that diagonal stay null and read as unreachable,
+  // correctly — at layer `lines` a suffix of fewer than `lines` items cannot be covered at all.
+  if (requiredLineCount === n) {
+    const minScores = empty();
+    const bestEnd = empty();
+    const breaks: number[] = [];
+
+    // Walk backwards so each row's value is the running sum of the singleton lines after it,
+    // mirroring the suffix direction the real solver fills in.
+    let restOfRun = 0;
+    for (let start = n - 1; start >= 0; start--) {
+      restOfRun += score[start][start + 1] as number;
+      // The layer this row is reached at during the traceback: the walk starts owing n lines and
+      // decrements per link, floored at 1 exactly as `restLines` does.
+      const lines = Math.max(n - start, 1);
+      minScores[start][lines] = restOfRun;
+      bestEnd[start][lines] = start + 1;
+    }
+    for (let i = 0; i < n; i++) breaks.push(i + 1);
+
+    return { breaks, minScores, bestEnd, score, len, requiredLineCount };
+  }
+
   const lastFittingEnd = new Array<number>(n).fill(0);
   let scan = 1;
   for (let start = 0; start < n; start++) {
@@ -428,7 +464,26 @@ export interface ResultEvent {
   breaks: number[];
 }
 
-export type CellEvent = CellEvaluateEvent | CellSettleEvent | TracebackStepEvent | ResultEvent;
+/** Fired exactly once, instead of any evaluate/settle events, when the requested line count is at
+ *  least the item count and the answer is therefore forced: n items over AT LEAST n lines is
+ *  exactly n lines of one item each. The solver returns without comparing a single candidate (see
+ *  the `requiredLineCount === n` shortcut in `balancedLineBreaksWithLineCount`), so there is no
+ *  comparison to narrate — this event says *why* there is nothing to step through, rather than
+ *  leaving a consumer to animate a scan that never ran. */
+export interface ForcedEvent {
+  kind: 'forced';
+  /** Lines owed, which equals the item count in this state. */
+  lineCount: number;
+  /** Total squared free space of the forced layout — the sum of the singleton lines. */
+  settledValue: number;
+}
+
+export type CellEvent =
+  | CellEvaluateEvent
+  | CellSettleEvent
+  | TracebackStepEvent
+  | ResultEvent
+  | ForcedEvent;
 
 /** Flat, cell-granular replay of the suffix DP: one `evaluate` event per candidate
  *  the algorithm actually tests, one `settle` event per row once that row's
@@ -620,6 +675,25 @@ export function traceCellEventsForLayer(
     });
     events.push({ kind: 'settle', start: 0, settledValue: lineScore, remaining: 1 });
     events.push({ kind: 'traceback', start: 0, end: n, remaining: 1 });
+    events.push({ kind: 'result', breaks: solved.breaks });
+    return events;
+  }
+
+  // The solver's other shortcut: at least as many lines asked for as there are items, so the answer
+  // is forced to one item per line and no candidate is ever compared. Mirror it for the same reason
+  // as the one above — narrating an evaluate and a settle here would show work the solver did not
+  // do.
+  //
+  // Deliberately no traceback events either. The traceback animation marks cells that an `evaluate`
+  // previously revealed, and this path reveals none, so a traceback link per forced line rendered
+  // as nothing at all: five steps that changed the screen not at all. Two events is the honest
+  // length of a run that compared nothing — the forced state, then its result.
+  if (requiredLineCount === n) {
+    events.push({
+      kind: 'forced',
+      lineCount: n,
+      settledValue: (solved.minScores[0]?.[n] as number) ?? 0,
+    });
     events.push({ kind: 'result', breaks: solved.breaks });
     return events;
   }

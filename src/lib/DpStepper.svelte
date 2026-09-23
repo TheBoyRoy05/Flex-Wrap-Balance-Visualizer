@@ -5,7 +5,7 @@
   // `balanceState.cellEvents` already carries that real order, so stepping through it in
   // sequence is stepping through the algorithm's own execution, not a story imposed after.
   import { balanceState } from './state.svelte';
-  import type { CellEvaluateEvent, TracebackStepEvent, ResultEvent } from './balance';
+  import type { CellEvaluateEvent, TracebackStepEvent, ResultEvent, ForcedEvent } from './balance';
   import { prefersReducedMotion } from 'svelte/motion';
 
   const events = $derived(balanceState.cellEvents);
@@ -103,6 +103,7 @@
   const settleEvent = $derived(event?.kind === 'settle' ? event : undefined);
   const tracebackEvent = $derived(event?.kind === 'traceback' ? (event as TracebackStepEvent) : undefined);
   const resultEvent = $derived(event?.kind === 'result' ? (event as ResultEvent) : undefined);
+  const forcedEvent = $derived(event?.kind === 'forced' ? (event as ForcedEvent) : undefined);
 </script>
 
 <div class="stepper">
@@ -159,6 +160,14 @@
       <p class="stepper-settle tnum">
         minScore[<strong>{settleEvent.start}</strong>][<strong>{layer}</strong>] &larr; <strong>{fmt(settleEvent.settledValue)}</strong>
         | Now Readable by Rows &lt; {settleEvent.start}
+      </p>
+    {:else if forcedEvent}
+      <p class="stepper-headline tnum">
+        Forced | <strong>{forcedEvent.lineCount}</strong> Lines For <strong>{forcedEvent.lineCount}</strong> Items
+      </p>
+      <p class="stepper-settle tnum">
+        Every Line Holds At Least One Item, So One Item Per Line Is The Only Layout
+        | No Candidates To Compare | Total <strong>{fmt(forcedEvent.settledValue)}</strong>
       </p>
     {:else if tracebackEvent}
       <p class="stepper-headline tnum">
