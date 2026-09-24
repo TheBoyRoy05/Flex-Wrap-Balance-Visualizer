@@ -2,7 +2,7 @@
   "name" : "autopilot-safe",
   "description" : "Autopilot with guardrails: reads/searches/builds run without prompts, destructive shell/writes are blocked or still confirmed, trusted subagent dispatch is auto-approved, though work is done inline by default.",
   "allowedTools" : [ "read", "grep", "glob", "code", "knowledge", "introspect", "goal", "todo_list", "@creds-agent" ],
-  "tools" : [ "read", "write", "shell", "grep", "glob", "code", "knowledge", "introspect", "goal", "todo_list", "subagent", "@playwright", "@creds-agent" ],
+  "tools" : [ "@builtin", "read", "write", "shell", "grep", "glob", "code", "knowledge", "introspect", "goal", "todo_list", "session_management", "subagent", "@playwright", "@creds-agent", "@kirocrew-core" ],
   "mcpServers" : {
     "playwright" : {
       "command" : "npx",
@@ -11,6 +11,10 @@
     "creds-agent" : {
       "command" : "aim",
       "args" : [ "mcp", "start-server", "local-creds-agent-mcp" ]
+    },
+    "kirocrew-core" : {
+      "command" : "/Applications/KiroCrew.app/Contents/Resources/backend-dist/kirocrew-backend-arm64/bin/kirocrew",
+      "args" : [ "mcp-core" ]
     }
   },
   "resources" : [ "file://~/.kiro/steering/**/*.md", "file://.kiro/steering/**/*.md" ],
@@ -32,6 +36,11 @@
   "hooks" : {
     "userPromptSubmit" : [ {
       "command" : "echo 'Reminders: (1) respond in caveman style — terse, drop articles/filler, keep technical accuracy. (2) Do the work inline: read the file, make the edit, run the command, measure the result. subagent is blocking-only, so it buys no parallelism and its verification claims have to be re-measured anyway. Dispatch only for read-heavy search whose file contents you do not want in context.'"
+    }, {
+      "command" : "echo 'PM reminders: (3) Any genuine DECISION for the user goes through the ask_question card, never plain text or an [OPTIONS:] line — the user misses plain text. (4) Ticket hygiene: docs/todo.md is the durable open-ticket list. Open a ticket the moment work is deferred, DELETE it the moment it is done, and surface what is still open at the end of a substantive turn. Do not let stale tickets accumulate.'"
+    } ],
+    "stop" : [ {
+      "command" : "if [ -f docs/todo.md ]; then echo \"[ticket check] docs/todo.md open tickets — verify none are now stale or done, and tell the user what is still open:\"; grep -nE '^[0-9]+\\.' docs/todo.md || echo '(no numbered tickets found)'; else echo '[ticket check] no docs/todo.md in this project'; fi"
     } ]
   }
 }
