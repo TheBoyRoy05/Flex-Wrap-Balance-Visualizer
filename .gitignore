@@ -26,3 +26,9 @@ dist-ssr
 # Agent browser artifacts
 .screenshots/
 .playwright-mcp/
+
+# Machine-local agent settings, written by the CLI
+.kiro/settings/
+
+# Git worktrees, kept inside the repo
+.worktrees/
