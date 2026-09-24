@@ -1,6 +1,6 @@
 # flex-wrap: balance
 
-An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap: balance`, mirroring the implementation in [WebKit](https://github.com/WebKit/WebKit/blob/74efecb8e0d1e43dea71093f25a1aab4ec9383ff/Source/WebCore/layout/formattingContexts/flex/FlexLineBreaker.cpp). View on tablet screen or larger for best experience.
+An interactive visualizer for the line-breaking algorithm behind CSS `flex-wrap: balance`, mirroring the implementation in [WebKit](https://github.com/WebKit/WebKit/blob/main/Source/WebCore/layout/formattingContexts/flex/FlexLineBreaker.cpp). View on tablet screen or larger for best experience.
 
 ![Hero](/src/assets/hero.png)
 
