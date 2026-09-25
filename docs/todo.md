@@ -27,22 +27,18 @@ when `requiredLineCount === itemCount`, because the answer is forced to one item
 per line; `traceCellEventsForLayer` mirrors the shortcut and the stepper states the
 forcing instead of narrating a scan that never ran (`f9eb955`).
 
-3. **File the WebKit bug and land the counterpart in `FlexLineBreaker.cpp`.**
-   Suggested title: `[flexbox] balancedLineBreaks should return early when
-   flexLineCount >= itemCount`. Keep the port and WebCore in step — this repo's
-   shortcut is currently ahead of the landed WebKit code.
-4. **Merge `idea/forced-line-count-shortcut`** once the WebKit side is agreed, so
-   the port does not diverge on a change that gets rejected upstream.
+3. **Merge `idea/forced-line-count-shortcut`.** Unblocked: the WebKit counterpart
+   landed as `5fa6b0283035` (bug 325009).
 
 ## Pre-existing (from the author's original handoff)
 
-5. **Re-run a UX audit** on the whole page now that the layer control is gone and
+4. **Re-run a UX audit** on the whole page now that the layer control is gone and
    the outcome table is in. This was deferred until the line-count design settled;
    it has.
-6. **Two cosmetic issues, deliberately left:** at narrow widths the matrix scroller
+5. **Two cosmetic issues, deliberately left:** at narrow widths the matrix scroller
    cuts a candidate column mid-cell (consequence of hiding scrollbars with no fade);
    the `Unreachable Row` legend swatch is a small diagonal that is hard to read as a
    hatch.
-7. **Show results across a sliding capacity range** — a compact plot of total score
+6. **Show results across a sliding capacity range** — a compact plot of total score
    or break count against capacity. (Option B partially addresses the "range"
    request across `k`, but not across capacity.)
